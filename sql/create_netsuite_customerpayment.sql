@@ -12,6 +12,10 @@
       their own tb_Netsuite_* tables, joined on <prefix>_id.
     - SupplementaryReference (a BPA-internal property) is not stored.
 
+    BPA control fields: the standard BPA_* block with the usual defaults. Each row is a
+    BPA entry, so the clustered primary key is BPA_EntryID (newsequentialid) and [id]
+    (the NetSuite internal id) gets a non-unique index.
+
     Does nothing if the table already exists.
 */
 SET NOCOUNT ON;
@@ -23,8 +27,32 @@ BEGIN
 END
 
 CREATE TABLE dbo.[tb_Netsuite_CustomerPayment] (
+    -- BPA control fields (standard block, same as the other tb_Netsuite_* tables)
+    [BPA_Origin]                                       nvarchar(50)          NULL,
+    [BPA_Direction]                                    nvarchar(50)          NULL,
+    [BPA_Company]                                      nvarchar(50)          NULL,
+    [BPA_EntryID]                                      uniqueidentifier      NOT NULL CONSTRAINT [DF_tb_Netsuite_CustomerPayment_EntryID] DEFAULT (newsequentialid()),
+    [BPA_ParentID]                                     uniqueidentifier      NULL,
+    [BPA_Status]                                       int                   NULL CONSTRAINT [DF_tb_Netsuite_CustomerPayment_Status] DEFAULT ((0)),
+    [BPA_Reference]                                    nvarchar(50)          NULL,
+    [BPA_Reference_Description]                        nvarchar(100)         NULL,
+    [BPA_Reference2]                                   nvarchar(50)          NULL,
+    [BPA_Reference2_Description]                       nvarchar(100)         NULL,
+    [BPA_Action]                                       nvarchar(1)           NULL,
+    [BPA_ReturnedID]                                   nvarchar(50)          NULL,
+    [BPA_Syscreated]                                   datetime              NULL CONSTRAINT [DF_tb_Netsuite_CustomerPayment_Syscreated] DEFAULT (getdate()),
+    [BPA_Sysmodified]                                  datetime              NULL CONSTRAINT [DF_tb_Netsuite_CustomerPayment_Sysmodified] DEFAULT (getdate()),
+    [BPA_Syscreator]                                   nvarchar(50)          NULL,
+    [BPA_Error]                                        nvarchar(max)         NULL,
+    [BPA_Error_Extended]                               nvarchar(max)         NULL,
+    [BPA_Description]                                  nvarchar(255)         NULL,
+    [BPA_Failcount]                                    int                   NULL CONSTRAINT [DF_tb_Netsuite_CustomerPayment_Failcount] DEFAULT ((0)),
+    [BPA_Orig_Entryid]                                 uniqueidentifier      NULL,
+    [BPA_TaskInstanceID]                               int                   NULL,
+    [BPA_TaskID]                                       int                   NULL,
+
     -- Standard fields
-    [id]                                               nvarchar(100) NOT NULL,
+    [id]                                               nvarchar(100),
     [tranId]                                           nvarchar(100),
     [transactionNumber]                                nvarchar(100),
     [externalId]                                       nvarchar(100),
@@ -335,8 +363,15 @@ CREATE TABLE dbo.[tb_Netsuite_CustomerPayment] (
     [custbody_xnumfacini]                              nvarchar(400),
     [custbody_xtotaldoc]                               decimal(28,10),
 
-    CONSTRAINT [PK_tb_Netsuite_CustomerPayment] PRIMARY KEY CLUSTERED ([id])
+    CONSTRAINT [PK_tb_Netsuite_CustomerPayment] PRIMARY KEY CLUSTERED ([BPA_EntryID])
 );
+
+-- Not unique: the same NetSuite record can be queued more than once (per direction / re-pick)
+CREATE NONCLUSTERED INDEX [IX_tb_Netsuite_CustomerPayment_id]
+    ON dbo.[tb_Netsuite_CustomerPayment] ([id]);
+
+CREATE NONCLUSTERED INDEX [IX_tb_Netsuite_CustomerPayment_BPA_Status]
+    ON dbo.[tb_Netsuite_CustomerPayment] ([BPA_Status], [BPA_Direction]) INCLUDE ([id], [BPA_Company]);
 
 CREATE NONCLUSTERED INDEX [IX_tb_Netsuite_CustomerPayment_tranDate]
     ON dbo.[tb_Netsuite_CustomerPayment] ([tranDate]) INCLUDE ([tranId], [customer_id], [payment]);
