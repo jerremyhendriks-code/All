@@ -2,7 +2,6 @@
     Child tables for the sublists in the BPA NetSuite Search output:
 
       tb_Netsuite_CustomerPayment_Apply    customerPayment  apply/items   (applied invoices, + doc)
-      tb_Netsuite_CustomerPayment_Credit   customerPayment  credit/items  (applied credits)
       tb_Netsuite_VendorPayment_Apply      vendorPayment    apply/items   (applied bills, + doc)
       tb_Netsuite_VendorPayment_Credit     vendorPayment    credit/items  (applied credits)
       tb_Netsuite_JournalEntry_Line        journalEntry     line/items    (+ account, department,
@@ -13,6 +12,9 @@
     NetSuite id. Columns follow the schema's field names and tc:OriginalType; referenced
     records on a line are flattened to <object>_<field> (id / refName, plus acctNumber or
     externalId where useful).
+
+    The credit sublist isn't available on customerPayment in our NetSuite connection, so
+    there is no CustomerPayment_Credit table.
 
     The apply/credit sublists return every open document, not only the paid ones:
     store or filter on [apply] = 1 for the lines actually applied.
@@ -85,64 +87,6 @@ BEGIN
 END
 ELSE
     PRINT N'Skipped dbo.[tb_Netsuite_CustomerPayment_Apply] (table already exists)';
-
--- tb_Netsuite_CustomerPayment_Credit: one row per credit/items entry
-IF OBJECT_ID(N'dbo.tb_Netsuite_CustomerPayment_Credit', N'U') IS NULL
-BEGIN
-    CREATE TABLE dbo.[tb_Netsuite_CustomerPayment_Credit] (
-        -- BPA control fields (standard block, same as the other tb_Netsuite_* tables)
-        [BPA_Origin]                                       nvarchar(50)          NULL,
-        [BPA_Direction]                                    nvarchar(50)          NULL,
-        [BPA_Company]                                      nvarchar(50)          NULL,
-        [BPA_EntryID]                                      uniqueidentifier      NOT NULL CONSTRAINT [DF_tb_Netsuite_CustomerPayment_Credit_EntryID] DEFAULT (newsequentialid()),
-        [BPA_ParentID]                                     uniqueidentifier      NULL,
-        [BPA_Status]                                       int                   NULL CONSTRAINT [DF_tb_Netsuite_CustomerPayment_Credit_Status] DEFAULT ((0)),
-        [BPA_Reference]                                    nvarchar(50)          NULL,
-        [BPA_Reference_Description]                        nvarchar(100)         NULL,
-        [BPA_Reference2]                                   nvarchar(50)          NULL,
-        [BPA_Reference2_Description]                       nvarchar(100)         NULL,
-        [BPA_Action]                                       nvarchar(1)           NULL,
-        [BPA_ReturnedID]                                   nvarchar(50)          NULL,
-        [BPA_Syscreated]                                   datetime              NULL CONSTRAINT [DF_tb_Netsuite_CustomerPayment_Credit_Syscreated] DEFAULT (getdate()),
-        [BPA_Sysmodified]                                  datetime              NULL CONSTRAINT [DF_tb_Netsuite_CustomerPayment_Credit_Sysmodified] DEFAULT (getdate()),
-        [BPA_Syscreator]                                   nvarchar(50)          NULL,
-        [BPA_Error]                                        nvarchar(max)         NULL,
-        [BPA_Error_Extended]                               nvarchar(max)         NULL,
-        [BPA_Description]                                  nvarchar(255)         NULL,
-        [BPA_Failcount]                                    int                   NULL CONSTRAINT [DF_tb_Netsuite_CustomerPayment_Credit_Failcount] DEFAULT ((0)),
-        [BPA_Orig_Entryid]                                 uniqueidentifier      NULL,
-        [BPA_TaskInstanceID]                               int                   NULL,
-        [BPA_TaskID]                                       int                   NULL,
-
-        -- Parent: BPA_ParentID = tb_Netsuite_CustomerPayment.BPA_EntryID
-        [customerPayment_id]                               nvarchar(100),        -- customerPayment/id (the parent's NetSuite id)
-
-        -- Line fields (credit/items)
-        [amount]                                           decimal(19,4),
-        [appliedTo]                                        nvarchar(400),
-        [apply]                                            bit,
-        [createdFrom]                                      nvarchar(400),
-        [creditDate]                                       date,
-        [currency]                                         nvarchar(100),
-        [due]                                              decimal(19,4),
-        [line]                                             int,
-        [refName]                                          nvarchar(400),
-        [refNum]                                           nvarchar(100),
-        [total]                                            decimal(19,4),
-        [type]                                             nvarchar(100),
-
-        CONSTRAINT [PK_tb_Netsuite_CustomerPayment_Credit] PRIMARY KEY CLUSTERED ([BPA_EntryID])
-    );
-
-    CREATE NONCLUSTERED INDEX [IX_tb_Netsuite_CustomerPayment_Credit_BPA_ParentID] ON dbo.[tb_Netsuite_CustomerPayment_Credit] ([BPA_ParentID]);
-    CREATE NONCLUSTERED INDEX [IX_tb_Netsuite_CustomerPayment_Credit_customerPayment_id] ON dbo.[tb_Netsuite_CustomerPayment_Credit] ([customerPayment_id], [line]);
-    CREATE NONCLUSTERED INDEX [IX_tb_Netsuite_CustomerPayment_Credit_BPA_Status]
-        ON dbo.[tb_Netsuite_CustomerPayment_Credit] ([BPA_Status], [BPA_Direction]) INCLUDE ([customerPayment_id], [BPA_Company]);
-
-    PRINT N'Created dbo.[tb_Netsuite_CustomerPayment_Credit]';
-END
-ELSE
-    PRINT N'Skipped dbo.[tb_Netsuite_CustomerPayment_Credit] (table already exists)';
 
 -- tb_Netsuite_VendorPayment_Apply: one row per apply/items entry
 IF OBJECT_ID(N'dbo.tb_Netsuite_VendorPayment_Apply', N'U') IS NULL

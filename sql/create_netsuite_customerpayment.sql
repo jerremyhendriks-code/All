@@ -93,6 +93,8 @@ CREATE TABLE dbo.[tb_Netsuite_CustomerPayment] (
     [arAcct_id]                                        nvarchar(100),        -- arAcct/id
     [arAcct_acctNumber]                                nvarchar(100),        -- arAcct/acctNumber
     [arAcct_refName]                                   nvarchar(400),        -- arAcct/refName
+    [postingPeriod_id]                                 nvarchar(100),        -- postingPeriod/id
+    [postingPeriod_refName]                            nvarchar(400),        -- postingPeriod/refName
     [entityBank_id]                                    nvarchar(100),        -- custbody_11187_pref_entity_bank/id
     [entityBank_refName]                               nvarchar(400),        -- custbody_11187_pref_entity_bank/refName
     [entityBank_acct_name]                             nvarchar(400),        -- custbody_11187_pref_entity_bank/custrecord_2663_entity_acct_name
