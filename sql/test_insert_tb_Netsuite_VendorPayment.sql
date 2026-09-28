@@ -45,7 +45,7 @@ DECLARE @sub1_id         nvarchar(100) = N'10',
 -- GGG (payment 0003)
 DECLARE @sub2_id         nvarchar(100) = N'89',    -- GGG
         @sub2_vendor_id  nvarchar(100) = N'5733',  -- 21705 Lucas Westra B.V.
-        @sub2_bank_id    nvarchar(100) = N'REPLACE_bank_account_2_id',
+        @sub2_bank_id    nvarchar(100) = N'5',     -- GL bank account
         @sub2_apacct_id  nvarchar(100) = NULL,     -- no AP field on the form: NetSuite default
         @sub2_curr_id    nvarchar(100) = N'4',     -- EUR, base currency of GGG
         @sub2_rate       nvarchar(50)  = N'1.0',
