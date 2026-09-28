@@ -1,0 +1,26 @@
+{
+  "externalId": "BPA-TEST-VP-0001",
+  "tranDate": "2026-09-28",
+  "memo": "BPA Platform FROM test - vendor payment applied to two bills",
+  "entity": { "id": "REPLACE_vendor_internal_id" },
+  "subsidiary": { "id": "REPLACE_subsidiary_internal_id" },
+  "currency": { "id": "REPLACE_currency_internal_id" },
+  "account": { "id": "REPLACE_bank_account_internal_id" },
+  "apAcct": { "id": "REPLACE_accounts_payable_account_internal_id" },
+  "exchangeRate": 1.0,
+  "toBePrinted": false,
+  "apply": {
+    "items": [
+      {
+        "doc": { "id": "REPLACE_open_vendor_bill_1_internal_id" },
+        "apply": true,
+        "amount": 1250.00
+      },
+      {
+        "doc": { "id": "REPLACE_open_vendor_bill_2_internal_id" },
+        "apply": true,
+        "amount": 349.95
+      }
+    ]
+  }
+}

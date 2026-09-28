@@ -1,0 +1,27 @@
+{
+  "externalId": "BPA-TEST-CP-0001",
+  "tranDate": "2026-09-28",
+  "memo": "BPA Platform FROM test - customer payment applied to two invoices",
+  "customer": { "id": "REPLACE_customer_internal_id" },
+  "subsidiary": { "id": "REPLACE_subsidiary_internal_id" },
+  "currency": { "id": "REPLACE_currency_internal_id" },
+  "account": { "id": "REPLACE_bank_account_internal_id" },
+  "arAcct": { "id": "REPLACE_accounts_receivable_account_internal_id" },
+  "undepFunds": false,
+  "exchangeRate": 1.0,
+  "payment": 2100.00,
+  "apply": {
+    "items": [
+      {
+        "doc": { "id": "REPLACE_open_invoice_1_internal_id" },
+        "apply": true,
+        "amount": 1500.00
+      },
+      {
+        "doc": { "id": "REPLACE_open_invoice_2_internal_id" },
+        "apply": true,
+        "amount": 600.00
+      }
+    ]
+  }
+}
