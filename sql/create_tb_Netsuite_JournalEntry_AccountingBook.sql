@@ -1,35 +1,31 @@
 /*
-    Child table of tb_Netsuite_JournalEntry: the GL impact of each journal entry
-    line per accounting book (primary and secondary books, Multi-Book Accounting).
+    Child table of tb_Netsuite_JournalEntry, filled from the journalEntry
+    "accountingBookDetail" sublist of the NetSuite Connector (REST record).
 
-    - One row per journal entry + line + accounting book.
+    - One row per journal entry + accounting book (primary and secondary books,
+      Multi-Book Accounting), with that book's exchange rate for the entry.
     - BPA_ParentID holds the BPA_EntryID of the parent row in tb_Netsuite_JournalEntry.
-    - Amounts are in the base currency of the line's subsidiary for that book.
-    - Book-specific journal entries only have rows for their own book.
+    - The record API does not return amounts per book. Secondary-book amounts are
+      derived as line amount x exchangeRate of that book, which can differ by
+      rounding from what NetSuite posts.
 
-    Source (SuiteQL):
-
-        SELECT tal.transaction,
-               tal.transactionline,
-               tal.accountingbook,
-               tl.subsidiary,
-               tal.account,
-               tal.debit,
-               tal.credit,
-               tal.amount,
-               tal.netamount,
-               tal.exchangerate,
-               tal.posting,
-               t.lastmodifieddate
-        FROM transactionaccountingline tal
-        JOIN transaction t      ON t.id = tal.transaction
-        JOIN transactionline tl ON tl.transaction = tal.transaction
-                               AND tl.id = tal.transactionline
-        WHERE t.type = 'Journal'
-
-    A changed journal entry can change its lines in every book, so replace all rows
-    for a changed [transaction] on each sync instead of upserting line by line.
+    An earlier version of this table was modelled on SuiteQL (one row per line per
+    book). If that version exists and is still empty it is dropped and recreated;
+    if it holds rows the script stops without changing anything.
 */
+SET XACT_ABORT ON;
+SET NOCOUNT ON;
+BEGIN TRANSACTION;
+
+IF COL_LENGTH(N'dbo.tb_Netsuite_JournalEntry_AccountingBook', N'transactionline') IS NOT NULL
+BEGIN
+    IF EXISTS (SELECT 1 FROM [dbo].[tb_Netsuite_JournalEntry_AccountingBook])
+        THROW 50001, N'dbo.tb_Netsuite_JournalEntry_AccountingBook has the old SuiteQL layout and contains rows; empty or drop it manually first.', 1;
+
+    DROP TABLE [dbo].[tb_Netsuite_JournalEntry_AccountingBook];
+    PRINT N'Dropped old layout of dbo.tb_Netsuite_JournalEntry_AccountingBook';
+END
+
 IF OBJECT_ID(N'dbo.tb_Netsuite_JournalEntry_AccountingBook', N'U') IS NULL
 BEGIN
     CREATE TABLE [dbo].[tb_Netsuite_JournalEntry_AccountingBook](
@@ -61,18 +57,9 @@ BEGIN
         [BPA_TaskInstanceID] [int] NULL,
         [BPA_TaskID] [int] NULL,
 
-        [transaction] [nvarchar](100) NULL,      -- journal entry id
-        [transactionline] [nvarchar](100) NULL,  -- line id within the journal entry
-        [accountingbook] [nvarchar](100) NULL,
-        [subsidiary] [nvarchar](100) NULL,       -- administration
-        [account] [nvarchar](100) NULL,
-        [debit] [decimal](19, 4) NULL,
-        [credit] [decimal](19, 4) NULL,
-        [amount] [decimal](19, 4) NULL,
-        [netamount] [decimal](19, 4) NULL,
-        [exchangerate] [decimal](28, 10) NULL,
-        [posting] [nvarchar](1) NULL,            -- 'T' / 'F'
-        [lastmodifieddate] [datetime] NULL,
+        [accountingBook_id] [nvarchar](100) NULL,       -- accountingBook.id
+        [accountingBook_refName] [nvarchar](255) NULL,  -- accountingBook.refName
+        [exchangeRate] [decimal](28, 10) NULL,
 
         CONSTRAINT [PK_tb_Netsuite_JournalEntry_AccountingBook] PRIMARY KEY CLUSTERED
         (
@@ -83,10 +70,9 @@ BEGIN
     CREATE NONCLUSTERED INDEX [IX_tb_Netsuite_JournalEntry_AccountingBook_BPA_ParentID]
         ON [dbo].[tb_Netsuite_JournalEntry_AccountingBook] ([BPA_ParentID]);
 
-    CREATE NONCLUSTERED INDEX [IX_tb_Netsuite_JournalEntry_AccountingBook_Key]
-        ON [dbo].[tb_Netsuite_JournalEntry_AccountingBook] ([transaction], [transactionline], [accountingbook]);
-
     PRINT N'Created dbo.tb_Netsuite_JournalEntry_AccountingBook';
 END
 ELSE
     PRINT N'Skipped dbo.tb_Netsuite_JournalEntry_AccountingBook (already exists)';
+
+COMMIT TRANSACTION;
