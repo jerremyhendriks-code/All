@@ -37,9 +37,9 @@ DECLARE @sub1_id         nvarchar(100) = N'REPLACE_subsidiary_1_id',
         @sub1_bank_id    nvarchar(100) = N'REPLACE_bank_account_1_id',
         @sub1_apacct_id  nvarchar(100) = N'REPLACE_ap_account_1_id',
         @sub1_curr_id    nvarchar(100) = N'REPLACE_currency_1_id',
-        @bill_a_id       nvarchar(100) = N'REPLACE_open_bill_A_id',  -- 1,250.00 open
-        @bill_b_id       nvarchar(100) = N'REPLACE_open_bill_B_id',  --   800.00 open
-        @bill_c_id       nvarchar(100) = N'REPLACE_open_bill_C_id';  --   500.00 open, 200.00 paid
+        @bill_a_id       nvarchar(100) = N'REPLACE_id_of_BPA-TEST-VB-A',  -- 1,250.00 open
+        @bill_b_id       nvarchar(100) = N'REPLACE_id_of_BPA-TEST-VB-B',  --   800.00 open
+        @bill_c_id       nvarchar(100) = N'REPLACE_id_of_BPA-TEST-VB-C';  --   500.00 open, 200.00 paid
 
 -- Subsidiary 2 (payment 0003), preferably with another base currency
 DECLARE @sub2_id         nvarchar(100) = N'REPLACE_subsidiary_2_id',
@@ -48,7 +48,7 @@ DECLARE @sub2_id         nvarchar(100) = N'REPLACE_subsidiary_2_id',
         @sub2_apacct_id  nvarchar(100) = N'REPLACE_ap_account_2_id',
         @sub2_curr_id    nvarchar(100) = N'REPLACE_currency_2_id',
         @sub2_rate       nvarchar(50)  = N'1.0',
-        @bill_d_id       nvarchar(100) = N'REPLACE_open_bill_D_id';  -- 1,000.00 open
+        @bill_d_id       nvarchar(100) = N'REPLACE_id_of_BPA-TEST-VB-D';  -- 1,000.00 open
 
 IF EXISTS (SELECT 1 FROM (VALUES (@sub1_id), (@sub1_vendor_id), (@sub1_bank_id), (@sub1_apacct_id),
                                  (@sub1_curr_id), (@bill_a_id), (@bill_b_id), (@bill_c_id),

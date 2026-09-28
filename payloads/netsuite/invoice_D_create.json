@@ -1,0 +1,32 @@
+{
+  "externalId": "BPA-TEST-INV-D",
+  "tranDate": "2026-09-28",
+  "dueDate": "2026-10-28",
+  "memo": "BPA Platform test invoice D for customer payment TO tests",
+  "entity": {
+    "id": "REPLACE_customer_2_id"
+  },
+  "subsidiary": {
+    "id": "REPLACE_subsidiary_2_id"
+  },
+  "currency": {
+    "id": "REPLACE_currency_2_id"
+  },
+  "account": {
+    "id": "REPLACE_ar_account_2_id"
+  },
+  "exchangeRate": 1.0,
+  "item": {
+    "items": [
+      {
+        "item": {
+          "id": "REPLACE_service_item_2_id"
+        },
+        "quantity": 1,
+        "rate": 1000.0,
+        "amount": 1000.0,
+        "description": "BPA test line invoice D"
+      }
+    ]
+  }
+}

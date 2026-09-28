@@ -38,9 +38,9 @@ DECLARE @sub1_id          nvarchar(100) = N'REPLACE_subsidiary_1_id',
         @sub1_bank_id     nvarchar(100) = N'REPLACE_bank_account_1_id',
         @sub1_aracct_id   nvarchar(100) = N'REPLACE_ar_account_1_id',
         @sub1_curr_id     nvarchar(100) = N'REPLACE_currency_1_id',
-        @inv_a_id         nvarchar(100) = N'REPLACE_open_invoice_A_id',  -- 1,500.00 open
-        @inv_b_id         nvarchar(100) = N'REPLACE_open_invoice_B_id',  --   600.00 open
-        @inv_c_id         nvarchar(100) = N'REPLACE_open_invoice_C_id';  --   900.00 open, 400.00 paid
+        @inv_a_id         nvarchar(100) = N'REPLACE_id_of_BPA-TEST-INV-A',  -- 1,500.00 open
+        @inv_b_id         nvarchar(100) = N'REPLACE_id_of_BPA-TEST-INV-B',  --   600.00 open
+        @inv_c_id         nvarchar(100) = N'REPLACE_id_of_BPA-TEST-INV-C';  --   900.00 open, 400.00 paid
 
 -- Subsidiary 2 (payment 0003), preferably with another base currency
 DECLARE @sub2_id          nvarchar(100) = N'REPLACE_subsidiary_2_id',
@@ -49,7 +49,7 @@ DECLARE @sub2_id          nvarchar(100) = N'REPLACE_subsidiary_2_id',
         @sub2_aracct_id   nvarchar(100) = N'REPLACE_ar_account_2_id',
         @sub2_curr_id     nvarchar(100) = N'REPLACE_currency_2_id',
         @sub2_rate        decimal(28, 10) = 1.0,
-        @inv_d_id         nvarchar(100) = N'REPLACE_open_invoice_D_id';  -- 1,000.00 open
+        @inv_d_id         nvarchar(100) = N'REPLACE_id_of_BPA-TEST-INV-D';  -- 1,000.00 open
 
 IF EXISTS (SELECT 1 FROM (VALUES (@sub1_id), (@sub1_customer_id), (@sub1_bank_id), (@sub1_aracct_id),
                                  (@sub1_curr_id), (@inv_a_id), (@inv_b_id), (@inv_c_id),
