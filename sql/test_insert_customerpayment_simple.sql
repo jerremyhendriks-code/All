@@ -1,6 +1,6 @@
 -- Test customer payment for the TO task: Metka Egn Italy S.R.L. (Italy 2) pays 100.00 of one open EUR invoice.
 -- Values taken from existing payment PAYIT250020 (custpymt id 38700).
--- Fill in the three REPLACE_ values first.
+-- Fill in the subsidiary id of Italy 2 first (REPLACE_ value).
 DECLARE @cp uniqueidentifier = NEWID();
 
 INSERT INTO dbo.tb_Netsuite_CustomerPayment
@@ -12,7 +12,7 @@ VALUES
      N'BPA-TEST-CP-0003', '2026-09-28', N'BPA TO test - partial customer payment', 100.00, 1.0,
      N'4044',                            -- 10079 Metka Egn Italy S.R.L.
      N'REPLACE_subsidiary_Italy2_id',    -- Italy 2
-     N'REPLACE_undeposited_funds_id',    -- Undeposited Funds
+     N'122',                             -- Undeposited Funds
      N'119',                             -- 121000001 ACCOUNTS RECEIVABLES : Accounts Receivable
      N'4');                              -- EUR
 
@@ -21,7 +21,7 @@ INSERT INTO dbo.tb_Netsuite_CustomerPayment_Apply
      doc_id, apply, amount)
 VALUES
     (NEWID(), @cp, N'TEST', N'TO', 0, N'I', N'BPA-TEST-CP-0003', N'BPA-TEST',
-     N'REPLACE_open_invoice_id', 1, 100.00);   -- an OPEN invoice of customer 4044 in EUR
+     N'17544', 1, 100.00);   -- INVIT250020, 2,680.11 open
 
 -- Check
 SELECT p.BPA_EntryID, p.externalId, p.customer_id, p.subsidiary_id, p.account_id, p.arAcct_id, p.currency_id,
