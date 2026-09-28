@@ -1,22 +1,24 @@
 {
   "externalId": "BPA-TEST-VB-B",
+  "customForm": {
+    "id": "125"
+  },
   "tranDate": "2026-09-28",
   "dueDate": "2026-10-28",
   "tranId": "BPA-TEST-VB-B",
   "memo": "BPA Platform test bill B for vendor payment TO tests",
   "entity": {
-    "id": "REPLACE_vendor_1_id"
+    "id": "4127"
   },
   "subsidiary": {
-    "id": "REPLACE_subsidiary_1_id"
+    "id": "10"
   },
   "currency": {
-    "id": "REPLACE_currency_1_id"
+    "id": "5"
   },
   "account": {
     "id": "REPLACE_ap_account_1_id"
   },
-  "exchangeRate": 1.0,
   "expense": {
     "items": [
       {

@@ -32,11 +32,11 @@ DECLARE @origin    nvarchar(50) = N'TEST',
 
 -- NetSuite sandbox internal ids --------------------------------------------
 -- Subsidiary 1 (payments 0001 and 0002)
-DECLARE @sub1_id         nvarchar(100) = N'REPLACE_subsidiary_1_id',
-        @sub1_vendor_id  nvarchar(100) = N'REPLACE_vendor_1_id',
+DECLARE @sub1_id         nvarchar(100) = N'10',
+        @sub1_vendor_id  nvarchar(100) = N'4127',
         @sub1_bank_id    nvarchar(100) = N'REPLACE_bank_account_1_id',
         @sub1_apacct_id  nvarchar(100) = N'REPLACE_ap_account_1_id',
-        @sub1_curr_id    nvarchar(100) = N'REPLACE_currency_1_id',
+        @sub1_curr_id    nvarchar(100) = N'5',
         @bill_a_id       nvarchar(100) = N'REPLACE_id_of_BPA-TEST-VB-A',  -- 1,250.00 open
         @bill_b_id       nvarchar(100) = N'REPLACE_id_of_BPA-TEST-VB-B',  --   800.00 open
         @bill_c_id       nvarchar(100) = N'REPLACE_id_of_BPA-TEST-VB-C';  --   500.00 open, 200.00 paid
@@ -74,12 +74,12 @@ INSERT INTO dbo.tb_Netsuite_VendorPayment
 VALUES
     (@vp1, @origin, @direction, @company, @status, @action,
      N'BPA-TEST-VP-0001', N'One bill, paid in full', @now, @now, @creator, 0,
-     N'', N'BPA-TEST-VP-0001', N'2026-09-28', N'BPA TO test - one bill paid in full', N'1.0', 0, 0,
+     N'', N'BPA-TEST-VP-0001', N'2026-09-28', N'BPA TO test - one bill paid in full', NULL, 0, 0,
      @sub1_vendor_id, @sub1_id, @sub1_bank_id, @sub1_apacct_id, @sub1_curr_id),
 
     (@vp2, @origin, @direction, @company, @status, @action,
      N'BPA-TEST-VP-0002', N'Two bills, second one partially', @now, @now, @creator, 0,
-     N'', N'BPA-TEST-VP-0002', N'2026-09-28', N'BPA TO test - two bills, one partial', N'1.0', 0, 0,
+     N'', N'BPA-TEST-VP-0002', N'2026-09-28', N'BPA TO test - two bills, one partial', NULL, 0, 0,
      @sub1_vendor_id, @sub1_id, @sub1_bank_id, @sub1_apacct_id, @sub1_curr_id),
 
     (@vp3, @origin, @direction, @company, @status, @action,

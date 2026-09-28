@@ -16,7 +16,6 @@
   "account": {
     "id": "REPLACE_ap_account_2_id"
   },
-  "exchangeRate": 1.0,
   "expense": {
     "items": [
       {
