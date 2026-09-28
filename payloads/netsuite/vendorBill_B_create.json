@@ -26,6 +26,9 @@
           "id": "657"
         },
         "amount": 800.0,
+        "taxCode": {
+          "id": "128"
+        },
         "memo": "BPA test expense line bill B"
       }
     ]
