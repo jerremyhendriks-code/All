@@ -23,7 +23,7 @@
     "items": [
       {
         "account": {
-          "id": "REPLACE_expense_account_1_id"
+          "id": "657"
         },
         "amount": 500.0,
         "memo": "BPA test expense line bill C"
