@@ -1,32 +1,36 @@
 /*
-    Insert one balanced test journal entry for the journalEntry TO task, then show
-    the JSON payload it should produce for NetSuite.
+    Build a test journalEntry payload for NetSuite from the reference data we
+    already picked up from NetSuite (tb_Netsuite_Subsidiary, tb_Netsuite_Currency,
+    tb_Netsuite_Account). Read-only: nothing is inserted or changed.
 
-    Run create_netsuite_journalentry_tables.sql first.
+    1. Run step 1 to look up a subsidiary and two accounts.
+    2. Put their ids in the variables in step 2. Use two accounts that are valid for
+       that subsidiary and aren't AR/AP (those need an entity on the line).
+    3. Run step 2. It checks the ids exist, then returns the JSON body for
+       POST /services/rest/record/v1/journalEntry (one debit line, one credit
+       line, same amount).
 
-    Before running, set the variables below to real NetSuite internal ids from
-    Ellomay's environment: a subsidiary, and two accounts that are valid for that
-    subsidiary and don't require an entity (so not AR/AP accounts).
-
-    Re-runnable: replaces the test entry as long as it hasn't been sent yet
-    ([id] still NULL). After a successful send it stops with an error, so a new
-    run can't silently overwrite an entry that exists in NetSuite; change
-    @externalId to make another one.
+    Re-sending the same @externalId updates that entry in NetSuite instead of
+    creating a second one, so change it for each new test entry.
 */
-SET XACT_ABORT ON;
 SET NOCOUNT ON;
 
-DECLARE @externalId    nvarchar(100) = N'TEST-JE-0001',
-        @subsidiary    nvarchar(100) = N'<subsidiary id>',
-        @currency      nvarchar(100) = NULL,  -- NULL = subsidiary base currency
-        @tranDate      date          = CAST(GETDATE() AS date),
-        @debitAccount  nvarchar(100) = N'<account id>',
-        @creditAccount nvarchar(100) = N'<account id>',
+-- Step 1: pick ids
+SELECT TOP (50) * FROM dbo.tb_Netsuite_Subsidiary;
+SELECT TOP (50) * FROM dbo.tb_Netsuite_Currency;
+SELECT TOP (200) * FROM dbo.tb_Netsuite_Account;
+
+-- Step 2: build the payload
+DECLARE @externalId    nvarchar(100)  = N'TEST-JE-0001',
+        @subsidiary    nvarchar(100)  = N'<subsidiary id>',
+        @currency      nvarchar(100)  = NULL,  -- NULL = subsidiary base currency
+        @tranDate      date           = CAST(GETDATE() AS date),
+        @debitAccount  nvarchar(100)  = N'<account id>',
+        @creditAccount nvarchar(100)  = N'<account id>',
         @amount        decimal(18, 2) = 1.00;
 
 DECLARE @msg nvarchar(2048);
 
--- Check the ids exist in the reference tables before writing anything
 IF NOT EXISTS (SELECT 1 FROM dbo.tb_Netsuite_Subsidiary WHERE id = @subsidiary)
 BEGIN
     SET @msg = N'Subsidiary ' + @subsidiary + N' not found in tb_Netsuite_Subsidiary.';
@@ -49,60 +53,24 @@ BEGIN
 END
 IF @debitAccount = @creditAccount
     THROW 50001, N'Use two different accounts for the debit and credit line.', 1;
-IF EXISTS (SELECT 1 FROM dbo.tb_Netsuite_JournalEntry WHERE externalId = @externalId AND id IS NOT NULL)
-BEGIN
-    SET @msg = N'Journal entry ' + @externalId + N' was already sent to NetSuite; change @externalId.';
-    THROW 50001, @msg, 1;
-END
+IF @amount IS NULL OR @amount <= 0
+    THROW 50001, N'@amount must be greater than 0.', 1;
 
-BEGIN TRANSACTION;
-
-DELETE FROM dbo.tb_Netsuite_JournalEntry WHERE externalId = @externalId;  -- lines cascade
-
-INSERT INTO dbo.tb_Netsuite_JournalEntry (externalId, subsidiary, tranDate, currency, memo)
-VALUES (@externalId, @subsidiary, @tranDate, @currency, N'Integration test ' + @externalId);
-
-INSERT INTO dbo.tb_Netsuite_JournalEntryLine (externalId, lineNumber, account, debit, credit, memo)
-VALUES (@externalId, 1, @debitAccount,  @amount, NULL,    N'Integration test debit'),
-       (@externalId, 2, @creditAccount, NULL,    @amount, N'Integration test credit');
-
-COMMIT TRANSACTION;
-
--- Balance check: difference must be 0.00
-SELECT externalId,
-       COUNT(*)                                 AS lines,
-       SUM(ISNULL(debit, 0))                    AS total_debit,
-       SUM(ISNULL(credit, 0))                   AS total_credit,
-       SUM(ISNULL(debit, 0) - ISNULL(credit, 0)) AS difference
-FROM dbo.tb_Netsuite_JournalEntryLine
-WHERE externalId = @externalId
-GROUP BY externalId;
-
--- Payload preview for POST /services/rest/record/v1/journalEntry
--- (NULL fields are left out, as NetSuite expects)
-SELECT h.externalId,
-       JSON_QUERY(N'{"id":"' + STRING_ESCAPE(h.subsidiary, 'json') + N'"}') AS subsidiary,
-       h.tranDate,
-       JSON_QUERY(CASE WHEN h.currency IS NOT NULL
-                       THEN N'{"id":"' + STRING_ESCAPE(h.currency, 'json') + N'"}' END) AS currency,
-       h.memo,
+-- NULL fields are left out of the JSON, as NetSuite expects
+SELECT @externalId                                                        AS externalId,
+       JSON_QUERY(N'{"id":"' + STRING_ESCAPE(@subsidiary, 'json') + N'"}') AS subsidiary,
+       @tranDate                                                          AS tranDate,
+       JSON_QUERY(CASE WHEN @currency IS NOT NULL
+                       THEN N'{"id":"' + STRING_ESCAPE(@currency, 'json') + N'"}' END) AS currency,
+       N'Integration test ' + @externalId                                 AS memo,
        JSON_QUERY((
            SELECT JSON_QUERY(N'{"id":"' + STRING_ESCAPE(l.account, 'json') + N'"}') AS account,
                   l.debit,
                   l.credit,
-                  JSON_QUERY(CASE WHEN l.entity IS NOT NULL
-                                  THEN N'{"id":"' + STRING_ESCAPE(l.entity, 'json') + N'"}' END) AS entity,
-                  JSON_QUERY(CASE WHEN l.department IS NOT NULL
-                                  THEN N'{"id":"' + STRING_ESCAPE(l.department, 'json') + N'"}' END) AS department,
-                  JSON_QUERY(CASE WHEN l.[class] IS NOT NULL
-                                  THEN N'{"id":"' + STRING_ESCAPE(l.[class], 'json') + N'"}' END) AS [class],
-                  JSON_QUERY(CASE WHEN l.location IS NOT NULL
-                                  THEN N'{"id":"' + STRING_ESCAPE(l.location, 'json') + N'"}' END) AS location,
                   l.memo
-           FROM dbo.tb_Netsuite_JournalEntryLine l
-           WHERE l.externalId = h.externalId
+           FROM (VALUES (1, @debitAccount,  @amount, CAST(NULL AS decimal(18, 2)), N'Integration test debit'),
+                        (2, @creditAccount, NULL,    @amount,                      N'Integration test credit')
+                ) AS l (lineNumber, account, debit, credit, memo)
            ORDER BY l.lineNumber
-           FOR JSON PATH)) AS [line.items]
-FROM dbo.tb_Netsuite_JournalEntry h
-WHERE h.externalId = @externalId
+           FOR JSON PATH))                                                AS [line.items]
 FOR JSON PATH, WITHOUT_ARRAY_WRAPPER;
