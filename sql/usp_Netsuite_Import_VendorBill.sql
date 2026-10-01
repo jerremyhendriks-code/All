@@ -17,8 +17,13 @@
     - Reference fields go to <field>_<child> columns:
           <entity><id>, <taxCode><refName>            -> entity_id, taxCode_refName
     - Header fields come from <vendorBill>. Expense lines come from <expense><items>, and
-      item lines from <item><items>. Each line row also gets the bill's <id> in
-      @LineParentColumn.
+      item lines from <item><items>.
+    - Lines are linked to their header through BPA_ParentID = the header row's
+      BPA_EntryID. BPA_EntryID is read back from each header row after it is inserted,
+      so it can be an identity, a column with a default (NEWID(), a sequence), or a
+      uniqueidentifier without a default, in which case the procedure fills it with NEWID().
+    - The NetSuite <id> of a bill goes to the header's id column. That is how a bill
+      already in the table is recognised.
     - A column with no matching field in the response is left out of the INSERT, so it
       gets its default or NULL. A field with no matching column is ignored.
     - Identity, computed and rowversion columns are never written.
@@ -33,17 +38,15 @@
     If a value doesn't convert, nothing is written. The procedure stops with an error
     that names the table, column, bill id and value.
 
-    It first deletes the rows for the bill ids in the response from all three tables,
-    then inserts them again, so running it twice gives
-    the same result. Where a table has the BPA_Direction / BPA_origin columns, it only
-    deletes rows that have the fixed values above, so rows from other directions or
-    origins stay put.
+    Bills that are already in the header table (same id, BPA_Direction = 'FROMUPDATE',
+    BPA_origin = 'Netsuite') are deleted together with their lines first and then
+    inserted again, so running it twice gives the same result. Rows with another
+    direction or origin aren't touched.
 
     The whole import runs in one transaction. Any error rolls back everything.
     Requires SQL Server 2017 or later (STRING_AGG).
 
-    The table names and the line tables' bill id column are set at the top of the
-    procedure body.
+    The table and link column names are set at the top of the procedure body.
 
     Example:
         EXEC dbo.usp_Netsuite_Import_VendorBill @ResponseXml = @response;
@@ -61,15 +64,17 @@ BEGIN
     SET XACT_ABORT ON;
 
     -- Target tables (all in dbo)
-    DECLARE @HeaderTable      sysname = N'tb_netsuite_vendorBills',
-            @ExpenseTable     sysname = N'tb_netsuite_vendorBills_expense',   -- TODO: confirm name
-            @ItemTable        sysname = N'tb_netsuite_vendorBills_item',      -- TODO: confirm name
-            @LineParentColumn sysname = N'vendorBill_id';                     -- TODO: confirm: bill id column in both line tables
+    DECLARE @HeaderTable      sysname = N'tb_Netsuite_vendorbill',
+            @ExpenseTable     sysname = N'tb_Netsuite_vendorBill_Expense',
+            @ItemTable        sysname = N'tb_Netsuite_vendorBill_item',
+            @BillIdColumn     sysname = N'id',             -- header column holding the NetSuite bill id
+            @HeaderKeyColumn  sysname = N'BPA_EntryID',    -- header key the lines point to
+            @LineParentColumn sysname = N'BPA_ParentID';   -- line column holding the header's BPA_EntryID
 
     DECLARE @x xml, @sql nvarchar(max), @msg nvarchar(2048), @n int,
-            @s char(1), @t sysname, @key sysname, @cols nvarchar(max), @exprs nvarchar(max),
-            @where nvarchar(max), @badTable sysname, @badCol sysname, @badBill nvarchar(100),
-            @badVal nvarchar(4000);
+            @s char(1), @t sysname, @cols nvarchar(max), @exprs nvarchar(max),
+            @badTable sysname, @badCol sysname, @badBill nvarchar(100),
+            @badVal nvarchar(4000), @hFilter nvarchar(max);
 
     -- Columns that always get a fixed value, in every table that has them
     DECLARE @fixed TABLE (name sysname PRIMARY KEY, val nvarchar(100) NOT NULL);
@@ -91,11 +96,11 @@ BEGIN
         sublist   char(1) PRIMARY KEY,   -- H = header, E = expense lines, I = item lines
         name      sysname NOT NULL,
         obj       int     NULL,
-        keycol    sysname NOT NULL,      -- column holding the bill id
+        keycol    sysname NOT NULL,      -- column that must exist: bill id (header) / parent link (lines)
         ins_order int     NOT NULL
     );
     INSERT INTO @tables (sublist, name, obj, keycol, ins_order) VALUES
-        ('H', @HeaderTable,  OBJECT_ID(N'dbo.' + QUOTENAME(@HeaderTable)),  N'id',              1),
+        ('H', @HeaderTable,  OBJECT_ID(N'dbo.' + QUOTENAME(@HeaderTable)),  @BillIdColumn,     1),
         ('E', @ExpenseTable, OBJECT_ID(N'dbo.' + QUOTENAME(@ExpenseTable)), @LineParentColumn, 2),
         ('I', @ItemTable,    OBJECT_ID(N'dbo.' + QUOTENAME(@ItemTable)),    @LineParentColumn, 3);
 
@@ -107,6 +112,17 @@ BEGIN
        OR NOT EXISTS (SELECT 1 FROM sys.columns c WHERE c.object_id = t.obj AND c.name = t.keycol)
     ORDER BY t.ins_order;
     IF @msg IS NOT NULL THROW 50001, @msg, 1;
+
+    -- The header key must be filled in by SQL Server, or be a uniqueidentifier we can fill with NEWID()
+    IF NOT EXISTS (SELECT 1 FROM sys.columns c
+                   WHERE c.object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@HeaderTable)) AND c.name = @HeaderKeyColumn
+                     AND (c.is_identity = 1 OR c.is_computed = 1 OR c.default_object_id <> 0
+                          OR TYPE_NAME(c.system_type_id) = N'uniqueidentifier'))
+    BEGIN
+        SET @msg = N'Column ' + QUOTENAME(@HeaderKeyColumn) + N' not found in dbo.' + QUOTENAME(@HeaderTable)
+                 + N', or it is not an identity, has no default and is not a uniqueidentifier.';
+        THROW 50001, @msg, 1;
+    END
 
     /* ---- Split into bills, lines and name/value pairs ------------------------------ */
 
@@ -160,10 +176,10 @@ BEGIN
            f.n.value('text()[1]', 'nvarchar(max)')
     FROM #line l CROSS APPLY l.x.nodes('items/*/*[not(*)]') f(n);
 
-    -- The bill id goes into the parent column of every line
+    -- Every line gets a parent link; the value (the header's key) is filled in after the header insert
     DELETE FROM #v WHERE sublist IN ('E', 'I') AND name = @LineParentColumn;
     INSERT INTO #v (sublist, bill_id, line_no, name, val)
-    SELECT l.sublist, l.bill_id, l.line_no, @LineParentColumn, l.bill_id
+    SELECT l.sublist, l.bill_id, l.line_no, @LineParentColumn, NULL
     FROM #line l;
 
     /* ---- Map fields to columns ----------------------------------------------------- */
@@ -201,6 +217,16 @@ BEGIN
       AND ty.name <> 'timestamp'
       AND (src.name IS NOT NULL OR f.val IS NOT NULL);
 
+    -- A uniqueidentifier BPA_EntryID that SQL Server doesn't fill in itself gets NEWID()
+    INSERT INTO #map (sublist, col, src, fixed, conv)
+    SELECT t.sublist, c.name, NULL, NULL, N'NEWID()'
+    FROM @tables t
+    JOIN sys.columns c ON c.object_id = t.obj
+    WHERE c.name = @HeaderKeyColumn
+      AND c.is_identity = 0 AND c.is_computed = 0 AND c.default_object_id = 0
+      AND TYPE_NAME(c.system_type_id) = N'uniqueidentifier'
+      AND NOT EXISTS (SELECT 1 FROM #map m WHERE m.sublist = t.sublist AND m.col = c.name);
+
     /* ---- Check that every value converts before writing anything ------------------- */
 
     SELECT @sql = STRING_AGG(CAST(
@@ -209,7 +235,7 @@ BEGIN
                     + N' AND v.val IS NOT NULL AND ' + REPLACE(m.conv, N'{v}', N'v.val') + N' IS NULL'
                   AS nvarchar(max)), N' UNION ALL ')
     FROM #map m
-    WHERE m.fixed IS NULL AND m.conv <> N'{v}';
+    WHERE m.fixed IS NULL AND m.src IS NOT NULL AND m.conv <> N'{v}';
 
     IF @sql IS NOT NULL
     BEGIN
@@ -231,36 +257,42 @@ BEGIN
     DECLARE @result TABLE (table_name sysname, rows_deleted int NULL, rows_inserted int NULL, ins_order int);
     INSERT INTO @result (table_name, ins_order) SELECT name, ins_order FROM @tables;
 
+    -- Bills already in the header table, as a filter on alias h
+    SELECT @hFilter = N'h.' + QUOTENAME(@BillIdColumn) + N' IN (SELECT b.bill_id FROM #bill b)'
+                    + ISNULL(STRING_AGG(CAST(N' AND h.' + QUOTENAME(c.name) + N' = N''' + REPLACE(f.val, N'''', N'''''') + N''''
+                                             AS nvarchar(max)), N''), N'')
+    FROM sys.columns c
+    JOIN @fixed f ON f.name = c.name COLLATE Latin1_General_CI_AS
+    WHERE c.object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@HeaderTable));
+
+    CREATE TABLE #hdrkey (bill_id nvarchar(100) COLLATE DATABASE_DEFAULT NOT NULL, entry_id nvarchar(100) COLLATE DATABASE_DEFAULT NULL);
+
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        -- Delete existing rows: lines first, then headers
+        -- Delete the bills that are already there: their lines first, then the headers
+        DECLARE del CURSOR LOCAL FAST_FORWARD FOR
+            SELECT sublist, name FROM @tables ORDER BY ins_order DESC;
+        OPEN del;
+        FETCH NEXT FROM del INTO @s, @t;
+        WHILE @@FETCH_STATUS = 0
         BEGIN
-            DECLARE del CURSOR LOCAL FAST_FORWARD FOR
-                SELECT sublist, name, keycol FROM @tables ORDER BY ins_order DESC;
-            OPEN del;
-            FETCH NEXT FROM del INTO @s, @t, @key;
-            WHILE @@FETCH_STATUS = 0
-            BEGIN
-                SELECT @where = STRING_AGG(CAST(N' AND t.' + QUOTENAME(c.name) + N' = N''' + REPLACE(f.val, N'''', N'''''') + N''''
-                                           AS nvarchar(max)), N'')
-                FROM @tables tb
-                JOIN sys.columns c ON c.object_id = tb.obj
-                JOIN @fixed f ON f.name = c.name COLLATE Latin1_General_CI_AS
-                WHERE tb.sublist = @s;
+            IF @s = 'H'
+                SET @sql = N'DELETE h FROM dbo.' + QUOTENAME(@HeaderTable) + N' h WHERE ' + @hFilter + N';';
+            ELSE
+                SET @sql = N'DELETE t FROM dbo.' + QUOTENAME(@t) + N' t WHERE t.' + QUOTENAME(@LineParentColumn)
+                         + N' IN (SELECT h.' + QUOTENAME(@HeaderKeyColumn) + N' FROM dbo.' + QUOTENAME(@HeaderTable)
+                         + N' h WHERE ' + @hFilter + N');';
+            SET @sql += N' SET @n = @@ROWCOUNT;';
+            EXEC sys.sp_executesql @sql, N'@n int OUTPUT', @n = @n OUTPUT;
+            UPDATE @result SET rows_deleted = @n WHERE table_name = @t;
 
-                SET @sql = N'DELETE t FROM dbo.' + QUOTENAME(@t) + N' t WHERE t.' + QUOTENAME(@key)
-                         + N' IN (SELECT b.bill_id FROM #bill b)' + ISNULL(@where, N'') + N'; SET @n = @@ROWCOUNT;';
-                EXEC sys.sp_executesql @sql, N'@n int OUTPUT', @n = @n OUTPUT;
-                UPDATE @result SET rows_deleted = @n WHERE table_name = @t;
-
-                FETCH NEXT FROM del INTO @s, @t, @key;
-            END
-            CLOSE del;
-            DEALLOCATE del;
+            FETCH NEXT FROM del INTO @s, @t;
         END
+        CLOSE del;
+        DEALLOCATE del;
 
-        -- Insert: headers first, then lines
+        -- Insert: headers first (capturing their BPA_EntryID), then lines
         DECLARE ins CURSOR LOCAL FAST_FORWARD FOR
             SELECT sublist, name FROM @tables ORDER BY ins_order;
         OPEN ins;
@@ -271,6 +303,8 @@ BEGIN
                    @exprs = STRING_AGG(CAST(
                                 CASE WHEN m.fixed IS NOT NULL
                                      THEN N'N''' + REPLACE(m.fixed, N'''', N'''''') + N''''
+                                     WHEN m.src IS NULL
+                                     THEN m.conv
                                      ELSE REPLACE(m.conv, N'{v}',
                                                   N'(SELECT TOP (1) v.val FROM #v v WHERE v.sublist = g.sublist AND v.bill_id = g.bill_id'
                                                 + N' AND v.line_no = g.line_no AND v.name = N''' + REPLACE(m.src, N'''', N'''''') + N''')')
@@ -282,12 +316,31 @@ BEGIN
             IF @cols IS NOT NULL AND EXISTS (SELECT 1 FROM #v WHERE sublist = @s)
             BEGIN
                 SET @sql = N'INSERT INTO dbo.' + QUOTENAME(@t) + N' (' + @cols + N')'
+                         + CASE WHEN @s = 'H'
+                                THEN N' OUTPUT CAST(inserted.' + QUOTENAME(@BillIdColumn) + N' AS nvarchar(100)),'
+                                   + N' CAST(inserted.' + QUOTENAME(@HeaderKeyColumn) + N' AS nvarchar(100)) INTO #hdrkey (bill_id, entry_id)'
+                                ELSE N'' END
                          + N' SELECT ' + @exprs
                          + N' FROM (SELECT DISTINCT sublist, bill_id, line_no FROM #v WHERE sublist = @s) g;'
                          + N' SET @n = @@ROWCOUNT;';
                 EXEC sys.sp_executesql @sql, N'@s char(1), @n int OUTPUT', @s = @s, @n = @n OUTPUT;
             END
             UPDATE @result SET rows_inserted = @n WHERE table_name = @t;
+
+            IF @s = 'H'
+            BEGIN
+                IF EXISTS (SELECT 1 FROM #hdrkey WHERE entry_id IS NULL)
+                BEGIN
+                    SET @msg = QUOTENAME(@HeaderKeyColumn) + N' is empty after inserting into dbo.' + QUOTENAME(@HeaderTable)
+                             + N', so the lines cannot be linked. Nothing was written.';
+                    THROW 50005, @msg, 1;
+                END
+
+                UPDATE v SET v.val = k.entry_id
+                FROM #v v
+                JOIN #hdrkey k ON k.bill_id = v.bill_id
+                WHERE v.sublist IN ('E', 'I') AND v.name = @LineParentColumn;
+            END
 
             FETCH NEXT FROM ins INTO @s, @t;
         END
