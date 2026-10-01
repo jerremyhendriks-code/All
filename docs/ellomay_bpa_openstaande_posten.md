@@ -50,15 +50,14 @@ withholding tax) and are not stored.
 
 ### Header table `tb_Netsuite_VendorBill`
 
-`sql/alter_netsuite_vendorbill_openstaande_posten.sql` adds the header fields
-needed for open items: `transactionNumber`, `documentStatus`, `dueDate`,
-`accountId`/`accountRefName`, `exchangeRate`, `total`, `userTotal`, `taxTotal`,
-`discountAmount`, `discountDate`, `paymentHold`, `vatRegNum` and `memo`. The FROM
-task mapping has to be extended with these fields.
+`sql/create_netsuite_vendorbill.sql` rebuilds the table from the schema: the
+`BPA_*` control fields, then every standard header field in schema order, with
+references as `<name>Id` + `<name>RefName`. Left out: `SupplementaryReference`
+(internal connector property), the `custbody_*` fields and `accountingBookDetail`.
 
-The table also has `postingPeriodId`/`RefName` and `customFormId`/`RefName`, which
-are not in the schema. Check in the connector whether these fields can be
-selected; otherwise they stay empty.
+The old table is kept as `tb_Netsuite_VendorBill_bak`. Its `postingPeriod` and
+`customForm` columns are dropped because the schema doesn't contain them. The FROM
+task mapping has to be redone against the new columns.
 
 ### Findings that affect open items
 
