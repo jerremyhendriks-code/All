@@ -84,11 +84,21 @@ BEGIN
 
     /* ---- Parse the response -------------------------------------------------------- */
 
+    IF @ResponseXml IS NULL OR LTRIM(@ResponseXml) = N''
+        THROW 50006, N'@ResponseXml is empty.', 1;
+
+    -- XML passed as escaped text (&lt;Response&gt;...): unescape it first
+    IF CHARINDEX(N'<', @ResponseXml) = 0 AND CHARINDEX(N'&lt;', @ResponseXml) > 0
+        SET @ResponseXml = CAST(@ResponseXml AS xml).value('.', 'nvarchar(max)');
+
     -- An nvarchar string that declares encoding="utf-8" can't be cast to xml, so drop the declaration
     SET @ResponseXml = LTRIM(REPLACE(@ResponseXml, NCHAR(65279), N''));
-    IF LEFT(@ResponseXml, 5) = N'<?xml'
-        SET @ResponseXml = STUFF(@ResponseXml, 1, CHARINDEX(N'?>', @ResponseXml) + 1, N'');
+    IF CHARINDEX(N'<?xml', @ResponseXml) > 0
+        SET @ResponseXml = STUFF(@ResponseXml, CHARINDEX(N'<?xml', @ResponseXml),
+                                 CHARINDEX(N'?>', @ResponseXml, CHARINDEX(N'<?xml', @ResponseXml)) - CHARINDEX(N'<?xml', @ResponseXml) + 2, N'');
     SET @x = CAST(@ResponseXml AS xml);
+
+    -- Element names are matched with local-name() throughout, so namespaces and prefixes don't matter
 
     /* ---- Target tables ------------------------------------------------------------- */
 
@@ -128,8 +138,16 @@ BEGIN
 
     CREATE TABLE #bill (bill_id nvarchar(100) COLLATE DATABASE_DEFAULT NULL, x xml NOT NULL);
     INSERT INTO #bill (bill_id, x)
-    SELECT b.n.value('(id/text())[1]', 'nvarchar(100)'), b.n.query('.')
-    FROM @x.nodes('//Object/vendorBill') b(n);
+    SELECT b.n.value('(*[local-name() = "id"]/text())[1]', 'nvarchar(100)'), b.n.query('.')
+    FROM @x.nodes('//*[local-name() = "vendorBill"]') b(n);
+
+    -- Nothing found although the text mentions vendorBill: the input isn't what we expect, so don't silently do nothing
+    IF NOT EXISTS (SELECT 1 FROM #bill) AND CHARINDEX(N'vendorBill', @ResponseXml) > 0
+    BEGIN
+        SET @msg = N'No <vendorBill> elements could be read from @ResponseXml. It starts with: '
+                 + LEFT(REPLACE(REPLACE(@ResponseXml, NCHAR(13), N' '), NCHAR(10), N' '), 300);
+        THROW 50007, @msg, 1;
+    END
 
     IF EXISTS (SELECT 1 FROM #bill WHERE bill_id IS NULL)
         THROW 50002, N'The response contains a vendorBill without an <id>.', 1;
@@ -140,10 +158,10 @@ BEGIN
                         line_no int NOT NULL, x xml NOT NULL);
     INSERT INTO #line (sublist, bill_id, line_no, x)
     SELECT 'E', b.bill_id, ROW_NUMBER() OVER (PARTITION BY b.bill_id ORDER BY (SELECT NULL)), l.n.query('.')
-    FROM #bill b CROSS APPLY b.x.nodes('vendorBill/expense/items') l(n);
+    FROM #bill b CROSS APPLY b.x.nodes('*/*[local-name() = "expense"]/*[local-name() = "items"]') l(n);
     INSERT INTO #line (sublist, bill_id, line_no, x)
     SELECT 'I', b.bill_id, ROW_NUMBER() OVER (PARTITION BY b.bill_id ORDER BY (SELECT NULL)), l.n.query('.')
-    FROM #bill b CROSS APPLY b.x.nodes('vendorBill/item/items') l(n);
+    FROM #bill b CROSS APPLY b.x.nodes('*/*[local-name() = "item"]/*[local-name() = "items"]') l(n);
 
     -- One row per field: plain fields keep their name, reference fields become parent_child
     CREATE TABLE #v (
@@ -157,24 +175,24 @@ BEGIN
 
     INSERT INTO #v (sublist, bill_id, line_no, name, val)
     SELECT 'H', b.bill_id, 0, f.n.value('local-name(.)', 'nvarchar(300)'), f.n.value('text()[1]', 'nvarchar(max)')
-    FROM #bill b CROSS APPLY b.x.nodes('vendorBill/*[not(*)]') f(n);
+    FROM #bill b CROSS APPLY b.x.nodes('*/*[not(*)]') f(n);
 
     INSERT INTO #v (sublist, bill_id, line_no, name, val)
     SELECT 'H', b.bill_id, 0,
            f.n.value('local-name(..)', 'nvarchar(150)') + N'_' + f.n.value('local-name(.)', 'nvarchar(150)'),
            f.n.value('text()[1]', 'nvarchar(max)')
     FROM #bill b
-    CROSS APPLY b.x.nodes('vendorBill/*[local-name() != "expense" and local-name() != "item"]/*[not(*)]') f(n);
+    CROSS APPLY b.x.nodes('*/*[local-name() != "expense" and local-name() != "item"]/*[not(*)]') f(n);
 
     INSERT INTO #v (sublist, bill_id, line_no, name, val)
     SELECT l.sublist, l.bill_id, l.line_no, f.n.value('local-name(.)', 'nvarchar(300)'), f.n.value('text()[1]', 'nvarchar(max)')
-    FROM #line l CROSS APPLY l.x.nodes('items/*[not(*)]') f(n);
+    FROM #line l CROSS APPLY l.x.nodes('*/*[not(*)]') f(n);
 
     INSERT INTO #v (sublist, bill_id, line_no, name, val)
     SELECT l.sublist, l.bill_id, l.line_no,
            f.n.value('local-name(..)', 'nvarchar(150)') + N'_' + f.n.value('local-name(.)', 'nvarchar(150)'),
            f.n.value('text()[1]', 'nvarchar(max)')
-    FROM #line l CROSS APPLY l.x.nodes('items/*/*[not(*)]') f(n);
+    FROM #line l CROSS APPLY l.x.nodes('*/*/*[not(*)]') f(n);
 
     -- Every line gets a parent link; the value (the header's key) is filled in after the header insert
     DELETE FROM #v WHERE sublist IN ('E', 'I') AND name = @LineParentColumn;
