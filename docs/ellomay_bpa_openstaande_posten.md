@@ -77,3 +77,12 @@ The open amount could be derived from `total` minus what was applied by vendor
 payments (`tb_Netsuite_VendorPayment`) and vendor credits. Alternatively the
 connector may offer a search or SuiteQL operation that returns `amountRemaining`.
 To be decided once all four schemas have been checked.
+
+### Schema fix: element order on expense lines
+
+The connector-generated schema lists the references on `expense.items` as
+`account`, `taxCode`, `department` (an `xs:sequence`, so order is enforced), but
+NetSuite returns them as `account`, `department`, `taxCode`. The SQL Connector step
+then fails with *"The element 'items' has invalid child element 'taxCode'"*.
+`schemas/netsuite/vendorBill.xsd` has `department` moved before `taxCode`; load it
+as the source schema of the SQL Connector step.
