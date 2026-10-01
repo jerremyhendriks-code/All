@@ -35,7 +35,10 @@ Header: 38 standard fields, 253 `custbody_*` fields, plus the references `entity
 `subsidiary`, `currency`, `account`, `terms`, `approvalStatus` and the
 collection `accountingBookDetail`.
 
-Sublists, each in its own child table, keyed on `vendorBillId` + `line`:
+Sublists, each in its own child table. Child tables carry the same `BPA_*` control
+fields as the other `tb_Netsuite_*` tables; `BPA_ParentID` points to the
+`BPA_EntryID` of the vendorBill row. Reference fields are stored as
+`<name>_id` + `<name>_refName`, as in `tb_Netsuite_Account`.
 
 | Sublist          | Fields                         | Child table                      |
 |------------------|--------------------------------|----------------------------------|
