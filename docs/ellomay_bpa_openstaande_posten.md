@@ -1,85 +1,65 @@
 # Ellomay – BPA FROM tasks for openstaande posten
 
-Open items (openstaande posten) are collected from four NetSuite transaction types.
-Each type gets its own FROM task in the BPA NetSuite connector tool and its own
-staging table:
+Open items (openstaande posten) come from four NetSuite transaction types:
+vendorBill, invoice, creditMemo and vendorCredit. Each one is pulled with a FROM
+task in the BPA NetSuite connector tool and loaded into `tb_Netsuite_*` staging
+tables.
 
-| Side             | NetSuite record | Staging table              | Open amount field  |
-|------------------|-----------------|----------------------------|--------------------|
-| Debiteuren (AR)  | Invoice         | `tb_Netsuite_Invoice`      | `amountRemaining`  |
-| Debiteuren (AR)  | Credit Memo     | `tb_Netsuite_CreditMemo`   | `unapplied`        |
-| Crediteuren (AP) | Vendor Bill     | `tb_Netsuite_VendorBill`   | (existing table)   |
-| Crediteuren (AP) | Vendor Credit   | `tb_Netsuite_VendorCredit` | `unApplied`        |
+The schemas the connector produces are kept in `schemas/netsuite/`. The staging
+tables are based on those schemas, not on NetSuite documentation.
 
-The new tables are created by `sql/create_netsuite_openstaande_posten.sql`.
+| Object       | Schema checked | Staging tables |
+|--------------|----------------|----------------|
+| vendorBill   | yes            | `tb_Netsuite_VendorBill` (exists), `tb_Netsuite_VendorBill_Item`, `tb_Netsuite_VendorBill_Expense` |
+| invoice      | not yet        | |
+| creditMemo   | not yet        | |
+| vendorCredit | not yet        | |
 
-## Search criteria per FROM task
+## How the connector returns data
 
-Filter on status so only items that are still open come back. The connector uses
-NetSuite's SOAP (SuiteTalk) API, so the status values are the SOAP enum values. The
-connector screen may show them with a different label, such as "Invoice:Open".
+Checked against `schemas/netsuite/vendorBill.xsd`:
 
-| Record        | Status filter (anyOf)                    | Not open (excluded)                       |
-|---------------|------------------------------------------|-------------------------------------------|
-| Invoice       | `_invoiceOpen`                           | `_invoicePaidInFull`, `_invoicePendingApproval`, `_invoiceRejected`, `_invoiceVoided` |
-| Credit Memo   | `_creditMemoOpen`                        | `_creditMemoFullyApplied`, `_creditMemoVoided` |
-| Vendor Bill   | `_vendorBillOpen`                        | `_vendorBillPaidInFull`, `_vendorBillPendingApproval`, `_vendorBillRejected`, `_vendorBillCancelled` |
-| Vendor Credit | `_vendorCreditOpen`                      | `_vendorCreditFullyApplied`               |
+- It uses the REST record API: reference fields are objects with `id` and `refName`,
+  and sublists are collections (`totalResults`, `count`, `hasMore`, `offset`,
+  `items[]`).
+- Every value is typed as `xs:string`. `tc:OriginalType` holds the real type
+  (`number`, `integer`, `boolean`, `string`). Booleans come through as
+  `True`/`False`.
+- Some references are expanded into the full record. In the vendorBill header,
+  `entity` has 133 fields and `account` has 41. Staging keeps only `id` and
+  `refName`.
 
-To check: decide whether Ellomay also counts **Pending Approval** bills or
-invoices as open. They are excluded above because they don't post to the AP/AR
-ledger yet.
+## vendorBill
 
-If Ellomay uses OneWorld and only some subsidiaries are in scope, also filter on
-`subsidiary`.
+Header: 38 standard fields, 253 `custbody_*` fields, plus the references `entity`,
+`subsidiary`, `currency`, `account`, `terms`, `approvalStatus` and the
+collection `accountingBookDetail`.
 
-## Field mapping (FROM task → staging table)
+Sublists, each in its own child table, keyed on `vendorBillId` + `line`:
 
-The column layout is the same for all three new tables.
+| Sublist          | Fields                         | Child table                      |
+|------------------|--------------------------------|----------------------------------|
+| `item.items[]`   | 33 standard + 86 `custcol_*`, refs `item`, `taxCode` | `tb_Netsuite_VendorBill_Item`    |
+| `expense.items[]`| 16 standard + 86 `custcol_*`, refs `account`, `taxCode`, `department` | `tb_Netsuite_VendorBill_Expense` |
 
-| Column              | Invoice            | Credit Memo        | Vendor Credit      |
-|---------------------|--------------------|--------------------|--------------------|
-| `id`                | `internalId`       | `internalId`       | `internalId`       |
-| `tranId`            | `tranId`           | `tranId`           | `tranId`           |
-| `status`            | `status`           | `status`           | `status` (if offered) |
-| `entityId` / `entityName`         | `entity` (internalId / name) | `entity` | `entity` |
-| `subsidiaryId` / `subsidiaryName` | `subsidiary`       | `subsidiary`       | `subsidiary`       |
-| `accountId` / `accountName`       | `account` (A/R)    | `account` (A/R)    | `account` (A/P)    |
-| `postingPeriodId` / `postingPeriodName` | `postingPeriod` | `postingPeriod` | `postingPeriod` |
-| `currencyId` / `currencyName`     | `currency`         | `currency`         | `currency`         |
-| `exchangeRate`      | `exchangeRate`     | `exchangeRate`     | `exchangeRate`     |
-| `tranDate`          | `tranDate`         | `tranDate`         | `tranDate`         |
-| `dueDate`           | `dueDate`          | — (leave empty)    | — (leave empty)    |
-| `otherRefNum`       | `otherRefNum`      | `otherRefNum`      | — (leave empty)    |
-| `memo`              | `memo`             | `memo`             | `memo`             |
-| `total`             | `total`            | `total`            | `userTotal`        |
-| `openAmount`        | `amountRemaining`  | `unapplied`        | `unApplied`        |
-| `lastModifiedDate`  | `lastModifiedDate` | `lastModifiedDate` | `lastModifiedDate` |
-| `loadDate`          | (not mapped, set by SQL Server) | ← | ← |
+The `custcol_*` fields come from localisation bundles (IL, IT nexil, ES SII,
+withholding tax) and are not stored.
 
-Reference fields (`entity`, `subsidiary`, `account`, `postingPeriod`, `currency`)
-return an internalId and a name. Map both.
+### Findings that affect open items
 
-Amounts are in transaction currency. To report in EUR, multiply by `exchangeRate`
-(an approximation; it ignores revaluation).
+- **No open amount on the header.** The schema has `total`, `userTotal`,
+  `taxTotal` and `discountAmount`, but no `amountRemaining`, `amountPaid` or
+  `status`. A partly paid bill can't be told apart from an unpaid one using this
+  record alone.
+- **`documentStatus` is the only status field.** In the sample it is `A`, which is
+  Open for a vendor bill. Paid in full is `B`. Pending approval and rejected are
+  separate values; `approvalStatus` (id 2 = Approved) covers approval separately.
+- **Missing header fields:** `postingPeriod`, `class`, `department` and `location`
+  are not in the header schema. Check whether the connector can add them.
+- **Line dimensions:** expense lines have `department` but no `class` or
+  `location`. Item lines have none of the three.
 
-## Loading
-
-The tables hold a snapshot of what is open right now. Per run:
-
-1. Empty the staging table (`TRUNCATE TABLE dbo.tb_Netsuite_…`).
-2. Run the FROM task with the status filter above.
-3. Insert the rows into the staging table.
-
-Without step 1, items that were paid or applied since the last run stay in the
-table, because they no longer come back from the search.
-
-## Still open
-
-- `tb_Netsuite_VendorBill` already exists. Check that it has an open amount column
-  and that its FROM task filters on `_vendorBillOpen`. NetSuite's Vendor Bill
-  record has no `amountRemaining` field, so the open amount may have to come from a
-  search column (`amountRemaining` in the transaction search results) or from
-  `userTotal` minus payments.
-- Once the four tables are loaded, they can be combined into one view of open
-  items, with the sign set per side (invoice +, credit memo −; bill +, vendor credit −).
+The open amount could be derived from `total` minus what was applied by vendor
+payments (`tb_Netsuite_VendorPayment`) and vendor credits. Alternatively the
+connector may offer a search or SuiteQL operation that returns `amountRemaining`.
+To be decided once all four schemas have been checked.
