@@ -38,7 +38,7 @@ collection `accountingBookDetail`.
 Sublists, each in its own child table. Child tables carry the same `BPA_*` control
 fields as the other `tb_Netsuite_*` tables; `BPA_ParentID` points to the
 `BPA_EntryID` of the vendorBill row. Reference fields are stored as
-`<name>_id` + `<name>_refName`, as in `tb_Netsuite_Account`.
+`<name>Id` + `<name>RefName`, as in `tb_Netsuite_VendorBill`.
 
 | Sublist          | Fields                         | Child table                      |
 |------------------|--------------------------------|----------------------------------|
@@ -47,6 +47,18 @@ fields as the other `tb_Netsuite_*` tables; `BPA_ParentID` points to the
 
 The `custcol_*` fields come from localisation bundles (IL, IT nexil, ES SII,
 withholding tax) and are not stored.
+
+### Header table `tb_Netsuite_VendorBill`
+
+`sql/alter_netsuite_vendorbill_openstaande_posten.sql` adds the header fields
+needed for open items: `transactionNumber`, `documentStatus`, `dueDate`,
+`accountId`/`accountRefName`, `exchangeRate`, `total`, `userTotal`, `taxTotal`,
+`discountAmount`, `discountDate`, `paymentHold`, `vatRegNum` and `memo`. The FROM
+task mapping has to be extended with these fields.
+
+The table also has `postingPeriodId`/`RefName` and `customFormId`/`RefName`, which
+are not in the schema. Check in the connector whether these fields can be
+selected; otherwise they stay empty.
 
 ### Findings that affect open items
 
@@ -57,8 +69,8 @@ withholding tax) and are not stored.
 - **`documentStatus` is the only status field.** In the sample it is `A`, which is
   Open for a vendor bill. Paid in full is `B`. Pending approval and rejected are
   separate values; `approvalStatus` (id 2 = Approved) covers approval separately.
-- **Missing header fields:** `postingPeriod`, `class`, `department` and `location`
-  are not in the header schema. Check whether the connector can add them.
+- **Missing header fields:** `postingPeriod`, `customForm`, `class`, `department`
+  and `location` are not in the header schema. Check whether the connector can add them.
 - **Line dimensions:** expense lines have `department` but no `class` or
   `location`. Item lines have none of the three.
 

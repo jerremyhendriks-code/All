@@ -10,8 +10,9 @@
     - [BPA_ParentID] holds the [BPA_EntryID] of the tb_Netsuite_VendorBill row the
       line belongs to.
     - Reference fields (item, account, department, taxCode) are stored as
-      <name>_id + <name>_refName. The rest of the expanded record (e.g. the 41
-      account fields) is left out; that data belongs in its own tb_Netsuite_* table.
+      <name>Id + <name>RefName, as in tb_Netsuite_VendorBill. The rest of the
+      expanded record (e.g. the 41 account fields) is left out; that data belongs
+      in its own tb_Netsuite_* table.
     - Custom line fields (custcol_*) are left out. In this schema they all come from
       localisation bundles (IL, IT nexil, ES SII, withholding tax) and aren't needed
       for open items.
@@ -75,10 +76,10 @@ BEGIN
         amortizStartDate            date           NULL,
         amortizationEndDate         date           NULL,
         amortizationResidual        nvarchar(100)  NULL,
-        item_id                     nvarchar(50)   NULL,
-        item_refName                nvarchar(200)  NULL,
-        taxCode_id                  nvarchar(50)   NULL,
-        taxCode_refName             nvarchar(200)  NULL,
+        itemId                      nvarchar(255)  NULL,
+        itemRefName                 nvarchar(255)  NULL,
+        taxCodeId                   nvarchar(255)  NULL,
+        taxCodeRefName              nvarchar(255)  NULL,
         CONSTRAINT PK_tb_Netsuite_VendorBill_Item PRIMARY KEY CLUSTERED (BPA_EntryID)
     );
     CREATE NONCLUSTERED INDEX IX_tb_Netsuite_VendorBill_Item_ParentID
@@ -128,12 +129,12 @@ BEGIN
         amortizStartDate            date           NULL,
         amortizationEndDate         date           NULL,
         amortizationResidual        nvarchar(100)  NULL,
-        account_id                  nvarchar(50)   NULL,
-        account_refName             nvarchar(200)  NULL,
-        department_id               nvarchar(50)   NULL,
-        department_refName          nvarchar(200)  NULL,
-        taxCode_id                  nvarchar(50)   NULL,
-        taxCode_refName             nvarchar(200)  NULL,
+        accountId                   nvarchar(255)  NULL,
+        accountRefName              nvarchar(255)  NULL,
+        departmentId                nvarchar(255)  NULL,
+        departmentRefName           nvarchar(255)  NULL,
+        taxCodeId                   nvarchar(255)  NULL,
+        taxCodeRefName              nvarchar(255)  NULL,
         CONSTRAINT PK_tb_Netsuite_VendorBill_Expense PRIMARY KEY CLUSTERED (BPA_EntryID)
     );
     CREATE NONCLUSTERED INDEX IX_tb_Netsuite_VendorBill_Expense_ParentID
