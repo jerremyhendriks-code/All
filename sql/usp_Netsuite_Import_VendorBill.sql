@@ -20,8 +20,7 @@
       item lines from <item><items>. Each line row also gets the bill's <id> in
       @LineParentColumn.
     - A column with no matching field in the response is left out of the INSERT, so it
-      gets its default or NULL. A field with no matching column is ignored. Run with
-      @ReportUnmapped = 1 to list those fields.
+      gets its default or NULL. A field with no matching column is ignored.
     - Identity, computed and rowversion columns are never written.
     - These columns get fixed values in every table that has them:
           BPA_Direction = 'FROMUPDATE', BPA_origin = 'Netsuite'
@@ -34,8 +33,8 @@
     If a value doesn't convert, nothing is written. The procedure stops with an error
     that names the table, column, bill id and value.
 
-    @ReplaceExisting = 1 (the default) first deletes the rows for the bill ids in the
-    response from all three tables, then inserts them again, so running it twice gives
+    It first deletes the rows for the bill ids in the response from all three tables,
+    then inserts them again, so running it twice gives
     the same result. Where a table has the BPA_Direction / BPA_origin columns, it only
     deletes rows that have the fixed values above, so rows from other directions or
     origins stay put.
@@ -43,13 +42,11 @@
     The whole import runs in one transaction. Any error rolls back everything.
     Requires SQL Server 2017 or later (STRING_AGG).
 
+    The table names and the line tables' bill id column are set at the top of the
+    procedure body.
+
     Example:
-        EXEC dbo.usp_Netsuite_Import_VendorBill
-             @ResponseXml      = @response,
-             @ExpenseTable     = N'tb_Netsuite_VendorBill_Expense',
-             @ItemTable        = N'tb_Netsuite_VendorBill_Item',
-             @LineParentColumn = N'vendorBill_id',
-             @ReportUnmapped   = 1;
+        EXEC dbo.usp_Netsuite_Import_VendorBill @ResponseXml = @response;
 */
 -- Required for the XML methods used below; stored with the procedure when it is created
 SET ANSI_NULLS ON;
@@ -57,17 +54,17 @@ SET QUOTED_IDENTIFIER ON;
 GO
 
 CREATE OR ALTER PROCEDURE dbo.usp_Netsuite_Import_VendorBill
-    @ResponseXml      nvarchar(max),
-    @HeaderTable      sysname = N'tb_Netsuite_VendorBill',
-    @ExpenseTable     sysname = N'tb_Netsuite_VendorBill_Expense',
-    @ItemTable        sysname = N'tb_Netsuite_VendorBill_Item',
-    @LineParentColumn sysname = N'vendorBill_id',   -- column in both line tables holding the bill id
-    @ReplaceExisting  bit     = 1,
-    @ReportUnmapped   bit     = 0
+    @ResponseXml nvarchar(max)
 AS
 BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
+
+    -- Target tables (all in dbo)
+    DECLARE @HeaderTable      sysname = N'tb_netsuite_vendorBills',
+            @ExpenseTable     sysname = N'tb_netsuite_vendorBills_expense',   -- TODO: confirm name
+            @ItemTable        sysname = N'tb_netsuite_vendorBills_item',      -- TODO: confirm name
+            @LineParentColumn sysname = N'vendorBill_id';                     -- TODO: confirm: bill id column in both line tables
 
     DECLARE @x xml, @sql nvarchar(max), @msg nvarchar(2048), @n int,
             @s char(1), @t sysname, @key sysname, @cols nvarchar(max), @exprs nvarchar(max),
@@ -238,7 +235,6 @@ BEGIN
         BEGIN TRANSACTION;
 
         -- Delete existing rows: lines first, then headers
-        IF @ReplaceExisting = 1
         BEGIN
             DECLARE del CURSOR LOCAL FAST_FORWARD FOR
                 SELECT sublist, name, keycol FROM @tables ORDER BY ins_order DESC;
@@ -306,11 +302,4 @@ BEGIN
     END CATCH
 
     SELECT table_name, rows_deleted, rows_inserted FROM @result ORDER BY ins_order;
-
-    IF @ReportUnmapped = 1
-        SELECT DISTINCT t.name AS table_name, v.name AS unmapped_field
-        FROM #v v
-        JOIN @tables t ON t.sublist = v.sublist
-        WHERE NOT EXISTS (SELECT 1 FROM #map m WHERE m.sublist = v.sublist AND m.src = v.name COLLATE DATABASE_DEFAULT)
-        ORDER BY t.name, v.name;
 END
