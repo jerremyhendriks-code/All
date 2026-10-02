@@ -8,12 +8,28 @@ tables.
 The schemas the connector produces are kept in `schemas/netsuite/`. The staging
 tables are based on those schemas, not on NetSuite documentation.
 
-| Object       | Schema checked | Staging tables |
-|--------------|----------------|----------------|
-| vendorBill   | yes            | `tb_Netsuite_VendorBill` (exists), `tb_Netsuite_VendorBill_Item`, `tb_Netsuite_VendorBill_Expense` |
-| invoice      | not yet        | |
-| creditMemo   | not yet        | |
-| vendorCredit | not yet        | |
+| Object       | Open amount fields in schema | References in schema |
+|--------------|------------------------------|----------------------|
+| vendorBill   | none                         | yes |
+| invoice      | `amountRemaining`, `amountPaid` | yes |
+| creditMemo   | `amountRemaining`, `applied`, `unapplied` | **none** (no entity, currency, account, postingPeriod) |
+| vendorCredit | `applied`, `unapplied`       | **none** (no entity, currency, account, postingPeriod) |
+
+## Generating the staging tables
+
+All `tb_Netsuite_*` tables are generated from the connector schemas:
+
+    python3 tools/generate_netsuite_tables.py schemas/netsuite/*.xsd
+
+This writes `sql/netsuite/create_<object>.sql` per object: the header table plus one
+child table per sublist (`tb_Netsuite_<Object>_<Sublist>`), following the rules
+agreed for vendorBill (`BPA_*` control fields, primary key on `BPA_EntryID`, child
+rows linked through `BPA_ParentID`, references as `<name>Id` + `<name>RefName`,
+custom fields left out except `custrecord_*` on custom records). Existing tables are
+renamed to `<table>_bak` first. The scripts were tested on SQL Server 2022, including
+the rename of an existing table and inserting connector-formatted values.
+
+`customrecord_2663_entity_bank_details` becomes `tb_Netsuite_EntityBankDetails`.
 
 ## How the connector returns data
 
@@ -50,7 +66,7 @@ withholding tax) and are not stored.
 
 ### Header table `tb_Netsuite_VendorBill`
 
-`sql/create_netsuite_vendorbill.sql` rebuilds the table from the schema: the
+`sql/netsuite/create_vendorBill.sql` rebuilds the table from the schema: the
 `BPA_*` control fields, then every standard header field in schema order, with
 references as `<name>Id` + `<name>RefName`. Left out: `SupplementaryReference`
 (internal connector property), the `custbody_*` fields and `accountingBookDetail`.
