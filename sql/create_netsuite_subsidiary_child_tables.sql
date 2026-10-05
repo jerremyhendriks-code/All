@@ -1,8 +1,8 @@
 /*
-    Create a "subsidiary" child table for every NetSuite object that can be
-    shared across several subsidiaries.
+    Create a "subsidiary" child table for the NetSuite objects listed below.
 
-    One row per (record, subsidiary) pair, mirroring NetSuite's own mapping tables:
+    One row per (record, subsidiary) pair. For the master-data objects this mirrors
+    NetSuite's own mapping tables:
 
         child table                              parent table                   NetSuite source
         ---------------------------------------  -----------------------------  ------------------------------
@@ -12,9 +12,15 @@
         tb_Netsuite_Department_Subsidiary        tb_Netsuite_Department         DepartmentSubsidiaryMap
         tb_Netsuite_Vendor_Subsidiary            tb_Netsuite_Vendor             VendorSubsidiaryRelationship
 
-    Not included, because the record belongs to exactly one subsidiary (a plain
-    subsidiary column on the parent table is enough) or to none:
-        Location, VendorBill, VendorPayment  -> single subsidiary
+    The transaction objects have a single subsidiary in NetSuite (transaction.subsidiary),
+    so these hold one row per transaction; they keep the model the same for every object:
+
+        tb_Netsuite_VendorBill_Subsidiary        tb_Netsuite_VendorBill         Transaction.subsidiary
+        tb_Netsuite_CustomerPayment_Subsidiary   tb_Netsuite_CustomerPayment    Transaction.subsidiary
+        tb_Netsuite_VendorPayment_Subsidiary     tb_Netsuite_VendorPayment      Transaction.subsidiary
+
+    Not included:
+        Location                             -> single subsidiary
         AccountingPeriod, Currency           -> not subsidiary-specific
         Subsidiary                           -> is the subsidiary itself
 
@@ -38,7 +44,10 @@ INSERT INTO @objects (parent, key_column) VALUES
     (N'tb_Netsuite_AccountingBook', N'accountingbook_id'),
     (N'tb_Netsuite_Classification', N'classification_id'),
     (N'tb_Netsuite_Department',     N'department_id'),
-    (N'tb_Netsuite_Vendor',         N'vendor_id');
+    (N'tb_Netsuite_Vendor',         N'vendor_id'),
+    (N'tb_Netsuite_VendorBill',     N'vendorbill_id'),
+    (N'tb_Netsuite_CustomerPayment', N'customerpayment_id'),
+    (N'tb_Netsuite_VendorPayment',  N'vendorpayment_id');
 
 DECLARE @parent sysname, @key sysname, @child sysname, @qc nvarchar(300),
         @collation sysname, @sql nvarchar(max);
