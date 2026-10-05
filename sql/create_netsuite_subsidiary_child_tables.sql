@@ -28,19 +28,23 @@
     - The standard BPA_* control fields first, as on the other tb_Netsuite_* tables
       (same types and defaults as tools/generate_netsuite_tables.py). BPA_ParentID
       points to the BPA_EntryID of the parent row.
-    - [<object>_id] and [subsidiary_id]: nvarchar(100) NULL, using the same collation
-      as the parent's [id] column (database default if the parent is missing).
+    - [<object>_id]: nvarchar(100) NULL, the NetSuite id of the parent record.
+    - [subsidiaryId] + [subsidiaryRefName]: nvarchar(255) NULL, the subsidiary reference
+      stored as <name>Id + <name>RefName like the other tb_Netsuite_* tables.
+    - Text columns use the same collation as the parent's [id] column (database
+      default if the parent is missing).
     - Clustered primary key on BPA_EntryID, nonclustered indexes on BPA_ParentID,
-      ([<object>_id], [subsidiary_id]) and [subsidiary_id].
+      ([<object>_id], [subsidiaryId]) and [subsidiaryId].
     - No foreign keys, so the parent and child tables can be truncated and reloaded
       independently by the integration.
 
     Existing tables:
-    - Already has BPA_EntryID: skipped.
-    - Created by the earlier version of this script (no BPA_* fields): renamed to
-      <table>_bak (primary key too), the new table is created and the existing rows are
-      copied into it. Drop the _bak tables once loading works. Stops without changes if
-      a _bak table already exists.
+    - Already has [subsidiaryRefName]: skipped.
+    - Created by an earlier version of this script (with [subsidiary_id]): renamed to
+      <table>_bak (constraints too), the new table is created and the existing rows are
+      copied into it: [subsidiary_id] goes to [subsidiaryId], and the BPA_* fields are
+      kept if the old table had them. Drop the _bak tables once loading works. Stops
+      without changes if a _bak table already exists.
 
     Runs in a single transaction: any error rolls everything back.
 */
@@ -84,9 +88,14 @@ DECLARE @bpa nvarchar(max) = N'
     BPA_TaskInstanceID         int              NULL,
     BPA_TaskID                 int              NULL,';
 
+DECLARE @bpa_cols nvarchar(max) = N'BPA_Origin, BPA_Direction, BPA_Company, BPA_EntryID, BPA_ParentID, '
+    + N'BPA_Status, BPA_Reference, BPA_Reference_Description, BPA_Reference2, BPA_Reference2_Description, '
+    + N'BPA_Action, BPA_ReturnedID, BPA_Syscreated, BPA_Sysmodified, BPA_Syscreator, BPA_Error, '
+    + N'BPA_Error_Extended, BPA_Description, BPA_Failcount, BPA_Orig_Entryid, BPA_TaskInstanceID, BPA_TaskID';
+
 DECLARE @parent sysname, @key sysname, @child sysname, @bak sysname, @qc nvarchar(300),
         @qb nvarchar(300), @collation sysname, @sql nvarchar(max), @old sysname, @new sysname,
-        @msg nvarchar(2048), @migrate bit, @rows int;
+        @msg nvarchar(2048), @migrate bit, @rows int, @copy_cols nvarchar(max);
 
 DECLARE obj CURSOR LOCAL FAST_FORWARD FOR SELECT parent, key_column FROM @objects;
 OPEN obj;
@@ -100,8 +109,8 @@ BEGIN
     SET @qb      = N'dbo.' + QUOTENAME(@bak);
     SET @migrate = 0;
 
-    IF OBJECT_ID(@qc, N'U') IS NOT NULL AND COL_LENGTH(@qc, N'BPA_EntryID') IS NOT NULL
-        PRINT N'Skipped  ' + @qc + N' (already has the BPA_* fields)';
+    IF OBJECT_ID(@qc, N'U') IS NOT NULL AND COL_LENGTH(@qc, N'subsidiaryRefName') IS NOT NULL
+        PRINT N'Skipped  ' + @qc + N' (already up to date)';
     ELSE
     BEGIN
         -- Table from the earlier version of this script: move it aside, keep its rows
@@ -143,7 +152,8 @@ BEGIN
         SET @sql = N'CREATE TABLE ' + @qc + N' (' + REPLACE(@bpa, N'{t}', @child)
                  + N'
     ' + QUOTENAME(@key) + N' nvarchar(100) COLLATE ' + @collation + N' NULL,
-    [subsidiary_id] nvarchar(100) COLLATE ' + @collation + N' NULL,
+    [subsidiaryId] nvarchar(255) COLLATE ' + @collation + N' NULL,
+    [subsidiaryRefName] nvarchar(255) COLLATE ' + @collation + N' NULL,
     CONSTRAINT ' + QUOTENAME(N'PK_' + @child) + N' PRIMARY KEY CLUSTERED (BPA_EntryID)
 );';
         EXEC sys.sp_executesql @sql;
@@ -151,17 +161,19 @@ BEGIN
         SET @sql = N'CREATE NONCLUSTERED INDEX ' + QUOTENAME(N'IX_' + @child + N'_ParentID')
                  + N' ON ' + @qc + N' (BPA_ParentID);'
                  + N'CREATE NONCLUSTERED INDEX ' + QUOTENAME(N'IX_' + @child + N'_' + @key)
-                 + N' ON ' + @qc + N' (' + QUOTENAME(@key) + N', [subsidiary_id]);'
-                 + N'CREATE NONCLUSTERED INDEX ' + QUOTENAME(N'IX_' + @child + N'_subsidiary_id')
-                 + N' ON ' + @qc + N' ([subsidiary_id]);';
+                 + N' ON ' + @qc + N' (' + QUOTENAME(@key) + N', [subsidiaryId]);'
+                 + N'CREATE NONCLUSTERED INDEX ' + QUOTENAME(N'IX_' + @child + N'_subsidiaryId')
+                 + N' ON ' + @qc + N' ([subsidiaryId]);';
         EXEC sys.sp_executesql @sql;
 
         PRINT N'Created  ' + @qc;
 
         IF @migrate = 1
         BEGIN
-            SET @sql = N'INSERT INTO ' + @qc + N' (' + QUOTENAME(@key) + N', [subsidiary_id])'
-                     + N' SELECT ' + QUOTENAME(@key) + N', [subsidiary_id] FROM ' + @qb + N';'
+            SET @copy_cols = CASE WHEN COL_LENGTH(@qb, N'BPA_EntryID') IS NOT NULL
+                                  THEN @bpa_cols + N', ' ELSE N'' END + QUOTENAME(@key);
+            SET @sql = N'INSERT INTO ' + @qc + N' (' + @copy_cols + N', [subsidiaryId])'
+                     + N' SELECT ' + @copy_cols + N', [subsidiary_id] FROM ' + @qb + N';'
                      + N' SET @rows = @@ROWCOUNT;';
             EXEC sys.sp_executesql @sql, N'@rows int OUTPUT', @rows = @rows OUTPUT;
             PRINT N'  copied ' + CAST(@rows AS nvarchar(20)) + N' row(s) from ' + @bak;
