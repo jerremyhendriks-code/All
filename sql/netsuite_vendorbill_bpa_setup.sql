@@ -24,6 +24,9 @@
     into that. Rename or drop that table first, or change the names here and
     in the views.
 
+    Load pages with dbo.usp_Netsuite_VendorBill_ImportXml (it calls
+    BPA_ImportXml with the right settings).
+
     Requires dbo.BPA_ImportXml. Safe to run more than once.
 */
 SET ANSI_NULLS ON;
@@ -55,6 +58,18 @@ EXEC dbo.BPA_ImportXml
 -- dynamic: the columns only exist from the calls above on
 EXEC (N'DELETE FROM dbo.tb_Netsuite_VendorBill     WHERE vendor_bill_id = N''__template__'';
         DELETE FROM dbo.tb_Netsuite_VendorBillLine WHERE vendor_bill_id = N''__template__'';');
+
+-- usp_Netsuite_VendorBill_ImportXml finds a bill's latest header row by
+-- BPA_Reference (= vendor_bill_id); the nvarchar(max) columns can't be indexed
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.tb_Netsuite_VendorBill')
+                                           AND name = N'IX_tb_Netsuite_VendorBill_BPA_Reference')
+    CREATE NONCLUSTERED INDEX IX_tb_Netsuite_VendorBill_BPA_Reference
+        ON dbo.tb_Netsuite_VendorBill (BPA_Reference, BPA_Syscreated);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.tb_Netsuite_VendorBillLine')
+                                           AND name = N'IX_tb_Netsuite_VendorBillLine_BPA_Reference')
+    CREATE NONCLUSTERED INDEX IX_tb_Netsuite_VendorBillLine_BPA_Reference
+        ON dbo.tb_Netsuite_VendorBillLine (BPA_Reference, BPA_Syscreated);
 
 COMMIT TRANSACTION;
 GO

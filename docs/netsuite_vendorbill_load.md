@@ -8,12 +8,13 @@ Web Service Connector) into SQL Server staging tables with the generic `dbo.BPA_
 | `suiteql/vendorbill_header.sql` | SuiteQL: one row per bill |
 | `suiteql/vendorbill_lines.sql` | SuiteQL: expense, item and tax lines |
 | `xsd/netsuite_vendorbill_header.xsd`, `xsd/netsuite_vendorbill_lines.xsd` | Response schemas for the Web Service Connector |
+| `sql/usp_Netsuite_VendorBill_ImportXml.sql` | Imports one page (the connector's XML string), headers or lines, through `BPA_ImportXml` |
 | `sql/netsuite_vendorbill_bpa_setup.sql` | Creates `tb_Netsuite_VendorBill` / `tb_Netsuite_VendorBillLine` through `BPA_ImportXml`, plus the views `vw_Netsuite_VendorBill` / `vw_Netsuite_VendorBillLine` |
-| `tests/netsuite_vendorbill/test_bpa_import.sql` | End-to-end test; run in a scratch database that has `BPA_ImportXml` |
+| `tests/netsuite_vendorbill/test_bpa_import.sql` | End-to-end test; run in a scratch database that has `BPA_ImportXml` (it empties both tables) |
 
 ## Install
 
-Run `sql/netsuite_vendorbill_bpa_setup.sql` in `BPAStaging`.
+Run `sql/netsuite_vendorbill_bpa_setup.sql`, then `sql/usp_Netsuite_VendorBill_ImportXml.sql`, in `BPAStaging`.
 
 `BPA_ImportXml` can't insert into a hand-made table with `NOT NULL` columns it doesn't fill
 (like a `tb_Netsuite_VendorBill` with a `NOT NULL [id]`). It also turns existing typed columns
@@ -32,30 +33,33 @@ non-BPA table. Rename or drop that table first.
    - Web Service Connector: `POST https://<account>.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql?limit=1000&offset=<offset>`,
      header `Prefer: transient`, body `{"q": "<vendorbill_header.sql with {{since}} filled in>"}`,
      response schema `netsuite_vendorbill_header.xsd`.
-   - If `count` > 0:
+   - Database step:
      ```sql
-     EXEC dbo.BPA_ImportXml
-         @Xml                       = <connector XML output>,
-         @BaseTableName             = N'dbo.tb_Netsuite_VendorBill',
-         @RecordPath                = N'items',
-         @BPA_Origin                = N'NetSuite',
-         @BPA_ReferenceField        = N'vendor_bill_id',
-         @BPA_Reference_Description = N'Vendor bill';
+     EXEC dbo.usp_Netsuite_VendorBill_ImportXml @XmlText = N'<connector XML output>', @RecordType = N'header';
      ```
-   - Repeat with `offset + count` while `hasMore` is `true`. `BPA_ImportXml` returns nothing,
-     so TaskCentre reads `count` and `hasMore` from the connector output.
-3. **Line loop:** same, with `vendorbill_lines.sql`, `netsuite_vendorbill_lines.xsd` and
-   `@BaseTableName = N'dbo.tb_Netsuite_VendorBillLine'`. Use the same `since`, and always
-   run it **after** the header loop (the line view depends on that order).
+     It returns `record_type, rows_imported, lines_linked, has_more, next_offset`:
+     repeat with `offset = next_offset` while `has_more = 1`.
+3. **Line loop**, after the header loop: same, with `vendorbill_lines.sql`,
+   `netsuite_vendorbill_lines.xsd`, the same `since`, and `@RecordType = N'lines'`.
 
-### Always pass `@RecordPath = N'items'`, and skip pages with `count = 0`
+### What `usp_Netsuite_VendorBill_ImportXml` does
 
-Without `@RecordPath`, `BPA_ImportXml` guesses which repeated element holds the records.
-On a normal page it picks `items`. On an empty page the only repeated element left is
-`links`: it then inserts a junk row and adds `rel` / `href` columns to the bill table.
-With `@RecordPath = N'items'`, an empty page raises error 50011 ("RecordPath does not
-exist") instead, so skip the call when `count` is 0. `items` also works when TaskCentre
-wraps the output (e.g. `/WebService/SuiteQL/OutputSchema/root/items`).
+- Takes the XML as text, with or without the `<?xml?>` declaration and with or without
+  the `WebSvcCon` namespace or a wrapper around `<root>`.
+- Recognises headers and lines by their fields (lines have `line_id`). `@RecordType` is
+  optional; when given, a page of the other kind is refused (error 50305).
+- Skips a page without `<items>` (`count = 0`). Calling `BPA_ImportXml` directly on such a
+  page would import `<links>` as records (a junk row plus `rel` / `href` columns).
+- Refuses a page with an item without `vendor_bill_id`, or a line without `line_id`.
+- Calls `BPA_ImportXml` with `@RecordPath = 'items'`, `@BPA_Origin = 'NetSuite'` and
+  `@BPA_ReferenceField = 'vendor_bill_id'`, so `BPA_Reference` holds the bill id.
+- Sets each imported line's `BPA_ParentID` to the `BPA_EntryID` of the latest imported header
+  row of its bill. That's why the header loop must run first.
+- All or nothing per page: on any error, nothing from that page stays in staging.
+
+**Passing the string.** If the database step supports parameters, bind the connector output to
+`@XmlText`. If it can only build the SQL text, double every `'` in the XML first (memos
+contain apostrophes) and keep the `N` prefix so non-ASCII characters (`Müller`) survive.
 
 ## Raw tables and views
 
@@ -63,8 +67,8 @@ wraps the output (e.g. `/WebService/SuiteQL/OutputSchema/root/items`).
   BPA columns plus one `nvarchar(max)` column per SuiteQL field and an `@Array` column (from
   the connector's `Array="true"`). Every import inserts new rows; nothing is updated or
   deleted. Each run therefore adds a row for every open bill. `BPA_Reference` holds the
-  NetSuite bill id. Header and lines come from separate calls, so `BPA_ParentID` doesn't link
-  them: join on `vendor_bill_id`.
+  NetSuite bill id. A line row's `BPA_ParentID` points at the header row it was imported
+  with.
 - **`vw_Netsuite_VendorBill`**: the latest imported row per bill, typed (dates, decimals,
   bits, ids as `nvarchar(100)`), plus `last_imported_at`, `bpa_entry_id`, `bpa_status`.
 - **`vw_Netsuite_VendorBillLine`**: for each bill, the lines imported at or after that bill's
