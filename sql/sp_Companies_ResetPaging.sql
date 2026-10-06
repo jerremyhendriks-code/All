@@ -8,7 +8,19 @@
       - BPA_Status      = 1         (run finished)
       - Offset          = 0         (next run starts at the first page)
       - MoreRecords     = 0
+      - DateFilter      = now minus @OverlapDays (default 1 day): the next run
+                          picks up everything modified since shortly before
+                          this run ended. The overlap covers records changed
+                          while this run was paging and the time-zone
+                          difference between NetSuite and this server; records
+                          picked up twice are harmless (the views take the
+                          latest row).
       - BPA_Sysmodified = GETDATE()
+
+    DateFilter is only changed here, at the end of a completed run, so it stays
+    the same for every page of a run. A run that fails halfway doesn't get here:
+    the next run resumes at the stored Offset with the same DateFilter.
+    Requires sql/tb_Companies_add_DateFilter.sql.
 
     The row is found by @BPA_Origin (e.g. 'NetSuite_vendorBill') and
     @BPA_Company (NULL = the row without company). Exactly one row must match,
@@ -23,7 +35,8 @@ GO
 
 CREATE OR ALTER PROCEDURE dbo.sp_Companies_ResetPaging
     @BPA_Origin  nvarchar(50),
-    @BPA_Company nvarchar(50) = NULL
+    @BPA_Company nvarchar(50) = NULL,
+    @OverlapDays int          = 1
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -41,6 +54,7 @@ BEGIN
     SET BPA_Status      = 1,
         Offset          = 0,
         MoreRecords     = 0,
+        DateFilter      = DATEADD(day, -ABS(@OverlapDays), GETDATE()),
         BPA_Sysmodified = GETDATE()
     WHERE BPA_Origin = @BPA_Origin
       AND (BPA_Company = @BPA_Company OR (@BPA_Company IS NULL AND BPA_Company IS NULL));
