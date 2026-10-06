@@ -1,8 +1,9 @@
 /*
     dbo.sp_Companies_ResetPaging
 
-    For the "Else" branch of the MoreRecords decision: the Web Service Connector
-    picked up 0 records, so the run of this object is complete.
+    For the "Else" branch of the MoreRecords decision: the last page said
+    <hasMore>false</hasMore> (sp_Companies_UpdateOffset set MoreRecords = 0),
+    so the run of this object is complete.
 
     Updates the object's row in dbo.tb_Companies:
       - BPA_Status      = 1         (run finished)
