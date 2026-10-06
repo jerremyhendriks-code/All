@@ -2,8 +2,9 @@
     Adds dbo.tb_Companies.DateFilter: the "modified since" filter of an object.
 
     - NULL means: no filter yet, do a full load.
-    - It stays the same for all pages of a run (only
-      sp_Companies_ResetPaging changes it, at the end of a completed run).
+    - It stays the same for all pages of a run (only sp_Companies_Update
+      changes it, at the end of a completed run: latest fetched
+      lastmodifieddate minus an overlap).
     - Read it for the SuiteQL {{since}} placeholder, already formatted:
 
         SELECT Incremental_Filter = CONVERT(char(19), ISNULL(DateFilter, '19000101'), 120),
