@@ -12,12 +12,14 @@ SQL Connector tool.
 | `sql/netsuite_vendorbill_staging_tables.sql` | Creates `tb_Netsuite_VendorBill` / `tb_Netsuite_VendorBillLine`, or adds missing columns to existing ones |
 | `sql/usp_Netsuite_VendorBill_Load.sql` | Loads one page of headers |
 | `sql/usp_Netsuite_VendorBillLine_Load.sql` | Loads one page of lines |
+| `sql/usp_Netsuite_VendorBill_Import.sql` | Entry point for TaskCentre: one page from an XML string or a saved file → the right load procedure |
 | `sql/usp_Netsuite_VendorBill_Run.sql` | `BeginRun` (run start + `{{since}}`) and `Finalize` (removed lines, stale bills) |
 | `tests/netsuite_vendorbill/test_vendorbill_load.sql` | End-to-end test; run in a scratch database |
 
 ## Install
 
-Run in this order: `netsuite_vendorbill_staging_tables.sql`, then the three `usp_` scripts.
+Run in this order: `netsuite_vendorbill_staging_tables.sql`, then `usp_Netsuite_VendorBill_Load.sql`, `usp_Netsuite_VendorBillLine_Load.sql`,
+`usp_Netsuite_VendorBill_Run.sql` and `usp_Netsuite_VendorBill_Import.sql` (it calls the two load procedures).
 If the table script prints `Check ...` lines, an existing column has a different type than
 the procedures expect. The load still works where SQL Server can convert implicitly, but
 change those columns when convenient.
@@ -30,15 +32,25 @@ change those columns when convenient.
    - Web Service Connector: `POST https://<account>.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql?limit=1000&offset=<offset>`,
      header `Prefer: transient`, body `{"q": "<vendorbill_header.sql with {{since}} replaced>"}`,
      response schema `netsuite_vendorbill_header.xsd`.
-   - Database query: `EXEC dbo.usp_Netsuite_VendorBill_Load @xml_text = <connector XML output>;`
+   - Database query, either
+     `EXEC dbo.usp_Netsuite_VendorBill_Import @record_type = 'header', @xml_text = <connector XML output>;`
+     or, if the task saves the response to a file,
+     `EXEC dbo.usp_Netsuite_VendorBill_Import @record_type = 'header', @file_path = N'\\server\share\vb_header.xml';`
      It returns `rows_in_page, rows_inserted, rows_updated, has_more, next_offset`:
      repeat with `offset = next_offset` while `has_more = 1`.
 3. **Line loop:** same, with `vendorbill_lines.sql`, `netsuite_vendorbill_lines.xsd` and
-   `usp_Netsuite_VendorBillLine_Load`, using the same `since`.
+   `@record_type = 'lines'`, using the same `since`.
 4. **Only if every page loaded without error:**
    `EXEC dbo.usp_Netsuite_VendorBill_Finalize @run_started_at = <run_started_at>;`
 
-Passing the XML: bind it as a parameter if the step supports parameters. If it can only
+**String or file?** Prefer the string: no file permissions, no share, no clean-up. Use
+`@file_path` when the XML is too large or awkward to pass as text. The path is opened by the
+SQL Server service, so it must be on the SQL Server machine or a UNC share that service
+account can read (a local path on the TaskCentre server won't work), and the caller needs the
+`ADMINISTER BULK OPERATIONS` (or `ADMINISTER DATABASE BULK OPERATIONS`) permission.
+UTF-8 and UTF-16 files both work. Delete the file from TaskCentre after a successful call.
+
+Passing the XML as a string: bind it as a parameter if the step supports parameters. If it can only
 build the SQL text, double every `'` in the XML first (memos contain apostrophes) and use
 `@xml_text = N'...'`. The procedure accepts the XML with or without the `<?xml?>`
 declaration and with or without the `WebSvcCon` namespace.

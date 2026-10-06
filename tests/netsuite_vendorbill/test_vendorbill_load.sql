@@ -5,6 +5,7 @@
       sql/usp_Netsuite_VendorBill_Load.sql
       sql/usp_Netsuite_VendorBillLine_Load.sql
       sql/usp_Netsuite_VendorBill_Run.sql
+      sql/usp_Netsuite_VendorBill_Import.sql
     It empties dbo.tb_Netsuite_VendorBill and dbo.tb_Netsuite_VendorBillLine.
     Prints PASS/FAIL per check and ends with an error if anything failed.
 */
@@ -142,7 +143,7 @@ INSERT INTO @b EXEC dbo.usp_Netsuite_VendorBill_BeginRun;
 SELECT @run = run_started_at FROM @b;
 IF (SELECT since FROM @b) <> '1900-01-01 00:00:00' BEGIN SET @fail += 1; PRINT 'FAIL since on empty staging'; END ELSE PRINT 'PASS since on empty staging';
 
-INSERT INTO @r EXEC dbo.usp_Netsuite_VendorBill_Load @xml_text = @headers;
+INSERT INTO @r EXEC dbo.usp_Netsuite_VendorBill_Import @record_type = N'header', @xml_text = @headers;
 IF NOT EXISTS (SELECT 1 FROM @r WHERE rows_in_page = 2 AND rows_inserted = 2 AND rows_updated = 0 AND has_more = 1 AND next_offset = 2)
     BEGIN SET @fail += 1; PRINT 'FAIL header page result row'; END ELSE PRINT 'PASS header page result row';
 
@@ -159,7 +160,7 @@ IF NOT EXISTS (SELECT 1 FROM dbo.tb_Netsuite_VendorBill
     BEGIN SET @fail += 1; PRINT 'FAIL bill 98766 values (exponent, unicode, omitted nulls)'; END ELSE PRINT 'PASS bill 98766 values (exponent, unicode, omitted nulls)';
 
 DELETE FROM @r;
-INSERT INTO @r EXEC dbo.usp_Netsuite_VendorBillLine_Load @xml_text = @lines;
+INSERT INTO @r EXEC dbo.usp_Netsuite_VendorBill_Import @record_type = N'lines', @xml_text = @lines;
 IF NOT EXISTS (SELECT 1 FROM @r WHERE rows_in_page = 4 AND rows_inserted = 4 AND has_more = 0)
     BEGIN SET @fail += 1; PRINT 'FAIL lines page result row'; END ELSE PRINT 'PASS lines page result row';
 IF (SELECT SUM(amount) FROM dbo.tb_Netsuite_VendorBillLine WHERE vendor_bill_id = N'98765') <> 1210.50
@@ -237,6 +238,15 @@ END TRY
 BEGIN CATCH
     IF ERROR_NUMBER() = 50113 PRINT 'PASS duplicate line rejected';
     ELSE BEGIN SET @fail += 1; PRINT 'FAIL duplicate line: ' + ERROR_MESSAGE(); END
+END CATCH
+
+BEGIN TRY
+    EXEC dbo.usp_Netsuite_VendorBill_Import @record_type = N'header', @xml_text = N'<root/>', @file_path = N'x.xml';
+    SET @fail += 1; PRINT 'FAIL import with both inputs accepted';
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER() = 50132 PRINT 'PASS import with both inputs rejected';
+    ELSE BEGIN SET @fail += 1; PRINT 'FAIL import with both inputs: ' + ERROR_MESSAGE(); END
 END CATCH
 
 DELETE FROM @r;
