@@ -9,12 +9,15 @@ Web Service Connector) into SQL Server staging tables with the generic `dbo.BPA_
 | `suiteql/vendorbill_lines.sql` | SuiteQL: expense, item and tax lines |
 | `xsd/netsuite_vendorbill_header.xsd`, `xsd/netsuite_vendorbill_lines.xsd` | Response schemas for the Web Service Connector |
 | `sql/usp_Netsuite_VendorBill_ImportXml.sql` | Imports one page (the connector's XML string), headers or lines, through `BPA_ImportXml` |
+| `sql/usp_Netsuite_SuiteQL_Paging.sql` | Keeps filter and offset of a running loop in `tb_Netsuite_SuiteQL_Run`, for tasks that restart themselves (`Start Self`) |
 | `sql/netsuite_vendorbill_bpa_setup.sql` | Creates `tb_Netsuite_VendorBill` / `tb_Netsuite_VendorBillLine` through `BPA_ImportXml`, plus the views `vw_Netsuite_VendorBill` / `vw_Netsuite_VendorBillLine` |
+| `tests/netsuite_vendorbill/test_suiteql_paging.sql` | Test for the paging procedures (empties `tb_Netsuite_SuiteQL_Run`) |
 | `tests/netsuite_vendorbill/test_bpa_import.sql` | End-to-end test; run in a scratch database that has `BPA_ImportXml` (it empties both tables) |
 
 ## Install
 
-Run `sql/netsuite_vendorbill_bpa_setup.sql`, then `sql/usp_Netsuite_VendorBill_ImportXml.sql`, in `BPAStaging`.
+Run `sql/netsuite_vendorbill_bpa_setup.sql`, then `sql/usp_Netsuite_VendorBill_ImportXml.sql` and
+`sql/usp_Netsuite_SuiteQL_Paging.sql`, in `BPAStaging`.
 
 `BPA_ImportXml` can't insert into a hand-made table with `NOT NULL` columns it doesn't fill
 (like a `tb_Netsuite_VendorBill` with a `NOT NULL [id]`). It also turns existing typed columns
@@ -41,6 +44,28 @@ non-BPA table. Rename or drop that table first.
      repeat with `offset = next_offset` while `has_more = 1`.
 3. **Line loop**, after the header loop: same, with `vendorbill_lines.sql`,
    `netsuite_vendorbill_lines.xsd`, the same `since`, and `@RecordType = N'lines'`.
+
+### Loop with `Start Self`
+
+A task that restarts itself loses its variables, so the filter and offset of the run in
+progress are kept in `dbo.tb_Netsuite_SuiteQL_Run`:
+
+1. Start of the task: `EXEC dbo.usp_Netsuite_SuiteQL_GetPaging @QueryName = N'vendorbill_header';`
+   returns `Incremental_Filter` and `Offset`. Use both in the request. While a run is in
+   progress it returns that run's filter and next offset; otherwise it starts a new run at 0
+   with a new filter. For the lines task use
+   `@QueryName = N'vendorbill_lines', @SinceFromQuery = N'vendorbill_header'`, so the lines use
+   exactly the header run's filter.
+2. Send the request, import the page (`usp_Netsuite_VendorBill_ImportXml`).
+3. Only if the import succeeded:
+   `EXEC dbo.usp_Netsuite_SuiteQL_AdvancePaging @QueryName = N'vendorbill_header', @XmlText = N'<same connector output>';`
+   It stores `offset + count` and returns `Continue_Loop`: 1 → `Start Self`, 0 → done. The run
+   ends when `hasMore` is false or `count` < 1000 (`count` alone would miss a total that's an
+   exact multiple of 1000). A page whose `<offset>` isn't the run's current offset is refused,
+   so a request that didn't use the stored offset can't silently skip or repeat a page.
+
+A page that fails leaves the run at that page's offset: the next task run retries it with the
+same filter. `@Restart = 1` on `GetPaging` abandons a run in progress.
 
 ### What `usp_Netsuite_VendorBill_ImportXml` does
 
