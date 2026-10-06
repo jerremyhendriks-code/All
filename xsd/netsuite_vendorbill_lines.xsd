@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  NetSuite vendor bill lines.
+  Shape of the Web Service Connector output for a SuiteQL call
+  (POST /services/rest/query/v1/suiteql) running suiteql/vendorbill_lines.sql.
+
+  - xs:all: element order inside <items> doesn't matter.
+  - Every item field is optional: SuiteQL leaves NULL columns out of the JSON.
+  - <items> is optional: a page with no results has none.
+  - NetSuite ids are strings (they go into nvarchar(100) staging columns), so
+    no id can ever be "too big" for the schema. Numbers are xs:double so
+    JSON exponent notation (2.5E3) validates. Dates stay strings; the stored
+    procedure converts everything.
+-->
+<xs:schema xmlns:tns="http://www.orbis-software.com/WebSvcCon" attributeFormDefault="unqualified" elementFormDefault="qualified" targetNamespace="http://www.orbis-software.com/WebSvcCon" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="root">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" maxOccurs="unbounded" name="links">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="rel" type="xs:string" />
+              <xs:element name="href" type="xs:string" />
+              <xs:element minOccurs="0" name="method" type="xs:string" />
+            </xs:sequence>
+            <xs:attribute name="Array" type="xs:boolean" use="optional" />
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="count" type="xs:unsignedInt" />
+        <xs:element name="hasMore" type="xs:boolean" />
+        <xs:element minOccurs="0" maxOccurs="unbounded" name="items">
+          <xs:complexType>
+            <xs:all>
+              <xs:element minOccurs="0" name="vendor_bill_id" type="xs:string" />
+              <xs:element minOccurs="0" name="line_id" type="xs:string" />
+              <xs:element minOccurs="0" name="line_number" type="xs:string" />
+              <xs:element minOccurs="0" name="line_type" type="xs:string" />
+              <xs:element minOccurs="0" name="item_id" type="xs:string" />
+              <xs:element minOccurs="0" name="item_name" type="xs:string" />
+              <xs:element minOccurs="0" name="account_id" type="xs:string" />
+              <xs:element minOccurs="0" name="account_name" type="xs:string" />
+              <xs:element minOccurs="0" name="memo" type="xs:string" />
+              <xs:element minOccurs="0" name="quantity" type="xs:double" />
+              <xs:element minOccurs="0" name="rate" type="xs:double" />
+              <xs:element minOccurs="0" name="amount" type="xs:double" />
+              <xs:element minOccurs="0" name="base_amount" type="xs:double" />
+              <xs:element minOccurs="0" name="department_id" type="xs:string" />
+              <xs:element minOccurs="0" name="department_name" type="xs:string" />
+              <xs:element minOccurs="0" name="class_id" type="xs:string" />
+              <xs:element minOccurs="0" name="class_name" type="xs:string" />
+              <xs:element minOccurs="0" name="location_id" type="xs:string" />
+              <xs:element minOccurs="0" name="location_name" type="xs:string" />
+              <xs:element minOccurs="0" name="line_entity_id" type="xs:string" />
+              <xs:element minOccurs="0" name="line_entity_name" type="xs:string" />
+            </xs:all>
+            <xs:attribute name="Array" type="xs:boolean" use="optional" />
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="offset" type="xs:unsignedInt" />
+        <xs:element name="totalResults" type="xs:unsignedInt" />
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

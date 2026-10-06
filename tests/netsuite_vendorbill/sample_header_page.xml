@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-16"?>
+<root xmlns="http://www.orbis-software.com/WebSvcCon">
+  <links Array="true">
+    <rel>next</rel>
+    <href>https://1234567.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql?limit=2&amp;offset=2</href>
+  </links>
+  <links Array="true">
+    <rel>self</rel>
+    <href>https://1234567.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql?limit=2&amp;offset=0</href>
+  </links>
+  <count>2</count>
+  <hasMore>true</hasMore>
+  <items Array="true">
+    <amount_open>1210.5</amount_open>
+    <ap_account_id>111</ap_account_id>
+    <ap_account_name>2000 Accounts Payable</ap_account_name>
+    <approval_status_id>2</approval_status_id>
+    <approval_status_name>Approved</approval_status_name>
+    <bill_date>2026-09-14</bill_date>
+    <bill_number>VENDBILL1001</bill_number>
+    <bill_total>1210.5</bill_total>
+    <created_date>2026-09-14 10:02:11</created_date>
+    <currency_id>1</currency_id>
+    <currency_name>EUR</currency_name>
+    <due_date>2026-10-14</due_date>
+    <exchange_rate>1</exchange_rate>
+    <is_posting>T</is_posting>
+    <is_voided>F</is_voided>
+    <last_modified>2026-09-15 08:30:00</last_modified>
+    <memo>Office supplies Q3 &amp; "toner" for Jan's printer</memo>
+    <posting_period_id>145</posting_period_id>
+    <posting_period_name>Sep 2026</posting_period_name>
+    <status_code>A</status_code>
+    <status_name>Bill : Open</status_name>
+    <subsidiary_id>3</subsidiary_id>
+    <subsidiary_name>Parent : NL BV</subsidiary_name>
+    <terms_id>2</terms_id>
+    <terms_name>Net 30</terms_name>
+    <vendor_bill_id>98765</vendor_bill_id>
+    <vendor_id>4321</vendor_id>
+    <vendor_invoice_number>INV-2026-0042</vendor_invoice_number>
+    <vendor_name>Kantoorhuis B.V.</vendor_name>
+  </items>
+  <items Array="true">
+    <vendor_bill_id>98766</vendor_bill_id>
+    <bill_number>VENDBILL1002</bill_number>
+    <bill_date>2026-09-20</bill_date>
+    <vendor_id>4322</vendor_id>
+    <vendor_name>Müller GmbH</vendor_name>
+    <currency_id>2</currency_id>
+    <currency_name>USD</currency_name>
+    <exchange_rate>0.9123456789</exchange_rate>
+    <bill_total>2.5E3</bill_total>
+    <amount_open>2500</amount_open>
+    <subsidiary_id>3</subsidiary_id>
+    <status_code>A</status_code>
+    <is_posting>F</is_posting>
+    <is_voided>F</is_voided>
+    <last_modified>2026-09-20 16:45:59</last_modified>
+  </items>
+  <offset>0</offset>
+  <totalResults>2</totalResults>
+</root>

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-16"?>
+<root xmlns="http://www.orbis-software.com/WebSvcCon">
+  <links Array="true">
+    <rel>self</rel>
+    <href>https://1234567.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql?limit=1000&amp;offset=0</href>
+  </links>
+  <count>4</count>
+  <hasMore>false</hasMore>
+  <items Array="true">
+    <account_id>612</account_id>
+    <account_name>6100 Office Supplies</account_name>
+    <amount>1000</amount>
+    <base_amount>1000</base_amount>
+    <department_id>7</department_id>
+    <department_name>Finance</department_name>
+    <line_id>1</line_id>
+    <line_number>1</line_number>
+    <line_type>expense</line_type>
+    <memo>Paper</memo>
+    <vendor_bill_id>98765</vendor_bill_id>
+  </items>
+  <items Array="true">
+    <account_id>612</account_id>
+    <amount>0.5</amount>
+    <line_id>2</line_id>
+    <line_number>2</line_number>
+    <line_type>expense</line_type>
+    <vendor_bill_id>98765</vendor_bill_id>
+  </items>
+  <items Array="true">
+    <account_id>1510</account_id>
+    <amount>210</amount>
+    <base_amount>210</base_amount>
+    <line_id>3</line_id>
+    <line_number>3</line_number>
+    <line_type>tax</line_type>
+    <vendor_bill_id>98765</vendor_bill_id>
+  </items>
+  <items Array="true">
+    <item_id>55</item_id>
+    <item_name>Widget</item_name>
+    <quantity>10</quantity>
+    <rate>250</rate>
+    <amount>2500</amount>
+    <line_id>1</line_id>
+    <line_number>1</line_number>
+    <line_type>item</line_type>
+    <vendor_bill_id>98766</vendor_bill_id>
+  </items>
+  <offset>0</offset>
+  <totalResults>4</totalResults>
+</root>
