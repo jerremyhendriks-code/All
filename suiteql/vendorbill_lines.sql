@@ -1,6 +1,6 @@
 /*
     NetSuite SuiteQL - vendor bill lines (expense, item and tax lines).
-    Feeds dbo.usp_Netsuite_VendorBillLine_Load via the Web Service Connector.
+    Imported into dbo.tb_Netsuite_VendorBillLine with dbo.BPA_ImportXml.
 
     Use the same {{since}} value as vendorbill_header.sql so lines and headers
     cover the same bills.

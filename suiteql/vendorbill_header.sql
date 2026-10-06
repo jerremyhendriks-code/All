@@ -1,6 +1,6 @@
 /*
     NetSuite SuiteQL - vendor bill headers (one row per bill).
-    Feeds dbo.usp_Netsuite_VendorBill_Load via the Web Service Connector.
+    Imported into dbo.tb_Netsuite_VendorBill with dbo.BPA_ImportXml.
 
     Filter: every bill that is still open, plus every bill modified since the
     last run. Replace {{since}} with 'YYYY-MM-DD HH24:MI:SS' (e.g. the max

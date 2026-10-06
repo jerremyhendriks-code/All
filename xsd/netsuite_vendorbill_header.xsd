@@ -7,10 +7,10 @@
   - xs:all: element order inside <items> doesn't matter.
   - Every item field is optional: SuiteQL leaves NULL columns out of the JSON.
   - <items> is optional: a page with no results has none.
-  - NetSuite ids are strings (they go into nvarchar(100) staging columns), so
+  - NetSuite ids are strings (staging stores them as text), so
     no id can ever be "too big" for the schema. Numbers are xs:double so
-    JSON exponent notation (2.5E3) validates. Dates stay strings; the stored
-    procedure converts everything.
+    JSON exponent notation (2.5E3) validates. Dates stay strings; the views
+    in sql/netsuite_vendorbill_bpa_setup.sql convert everything.
 -->
 <xs:schema xmlns:tns="http://www.orbis-software.com/WebSvcCon" attributeFormDefault="unqualified" elementFormDefault="qualified" targetNamespace="http://www.orbis-software.com/WebSvcCon" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="root">
