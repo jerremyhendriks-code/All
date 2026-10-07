@@ -5,18 +5,25 @@
     dbo.tb_Paging
         One row per run of a FROM task. Offset is the offset of the next page to
         fetch and is always a multiple of the page limit (1000).
+        - BPA_Status            0 = run in progress, 1 = run complete
         - LastRun               when the task last ran (start or last iteration)
         - RecordsLastIteration  records picked up in the last iteration (page)
         - RecordsThisRun        records picked up in this run in total
         - DateFilter            only records modified on or after this are fetched;
                                 NULL means a full load
 
-    dbo.usp_Paging_Start @Origin
-        Call at the start of the FROM task. Inserts a new row for the object with
-        Offset = 0, MoreRecords = 1 and the counters at 0, and returns it.
-        DateFilter is taken from @DateFilter, or else from the start time of the
-        object's last completed run (so only records changed since then are fetched).
-        @FullLoad = 1 leaves DateFilter NULL.
+    dbo.usp_Paging_Init @Origin
+        Call at the start of every iteration of the FROM task; returns the row to
+        page with (use its Offset and DateFilter in the request).
+        - If the object has a run in progress (BPA_Status = 0), that row is returned
+          and nothing is inserted, so iterations of the same run share one row.
+        - Only when there is no run in progress (the last one completed, or this is
+          the first run) is a new row inserted, with BPA_Status = 0, Offset = 0,
+          MoreRecords = 1 and the counters at 0.
+        For a new run, DateFilter is taken from @DateFilter, or else from the start
+        time of the object's last completed run (so only records changed since then
+        are fetched). @FullLoad = 1 leaves DateFilter NULL. Both are ignored when a
+        run is already in progress.
 
     dbo.usp_Paging_Update @Origin, @ResponseXml
         Call at the end of each iteration with the webservice connector's response
@@ -24,11 +31,13 @@
         <hasMore> elements at the start of the response:
             <count>1000</count>
             <hasMore>true</hasMore>
-        and updates the object's current run (its latest row with MoreRecords = 1):
+        and updates the object's current run (its latest row with BPA_Status = 0):
         sets LastRun, RecordsLastIteration = count and adds count to RecordsThisRun.
         - If hasMore is true, Offset moves on by the page limit (1000).
-        - If hasMore is false, MoreRecords is set to 0 and the run is finished.
-        - If <hasMore> is missing, a full page (count = 1000) counts as more records.
+        - If hasMore is false, the run is complete: MoreRecords = 0 and
+          BPA_Status = 1, so the next usp_Paging_Init starts a new run.
+        - If <hasMore> is missing, a full page (count = 1000) counts as more records
+          and anything less (count < 1000) completes the run.
         Raises an error if <count> is missing or not a number from 0 to 1000.
         Returns the updated row.
 
@@ -81,7 +90,7 @@ BEGIN
         CHECK ([RecordsThisRun] >= 0);
 
     CREATE NONCLUSTERED INDEX [IX_tb_Paging_BPA_Origin_BPA_Syscreated]
-        ON [dbo].[tb_Paging] ([BPA_Origin], [BPA_Syscreated]) INCLUDE ([MoreRecords]) ON [PRIMARY];
+        ON [dbo].[tb_Paging] ([BPA_Origin], [BPA_Syscreated]) INCLUDE ([BPA_Status], [MoreRecords]) ON [PRIMARY];
 
     PRINT N'Created [dbo].[tb_Paging]';
 END
@@ -89,7 +98,7 @@ ELSE
     PRINT N'Skipped [dbo].[tb_Paging] (already exists)';
 GO
 
-CREATE OR ALTER PROCEDURE [dbo].[usp_Paging_Start]
+CREATE OR ALTER PROCEDURE [dbo].[usp_Paging_Init]
     @Origin     nvarchar(50),
     @DateFilter datetime = NULL,
     @FullLoad   bit      = 0
@@ -98,30 +107,46 @@ BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
 
-    DECLARE @now datetime = getdate(), @newID uniqueidentifier = newid();
+    DECLARE @now datetime = getdate(), @entryID uniqueidentifier;
 
     IF @Origin IS NULL
         THROW 50010, N'@Origin is required.', 1;
 
-    -- Default DateFilter: start of the object's last completed run
-    IF @FullLoad = 1
-        SET @DateFilter = NULL;
-    ELSE IF @DateFilter IS NULL
-        SELECT TOP (1) @DateFilter = [BPA_Syscreated]
-        FROM [dbo].[tb_Paging]
-        WHERE [BPA_Origin] = @Origin AND [MoreRecords] = 0
-        ORDER BY [BPA_Syscreated] DESC;
+    BEGIN TRANSACTION;
 
-    INSERT INTO [dbo].[tb_Paging]
-        ([BPA_EntryID], [BPA_Origin], [BPA_Syscreated], [BPA_Sysmodified], [Offset], [MoreRecords],
-         [DateFilter], [LastRun], [RecordsLastIteration], [RecordsThisRun])
-    VALUES
-        (@newID, @Origin, @now, @now, 0, 1, @DateFilter, @now, 0, 0);
+    -- Run in progress: keep using its row
+    SELECT TOP (1) @entryID = [BPA_EntryID]
+    FROM [dbo].[tb_Paging] WITH (UPDLOCK, HOLDLOCK)
+    WHERE [BPA_Origin] = @Origin AND [BPA_Status] = 0
+    ORDER BY [BPA_Syscreated] DESC;
+
+    -- No run in progress: start a new one
+    IF @entryID IS NULL
+    BEGIN
+        -- Default DateFilter: start of the object's last completed run
+        IF @FullLoad = 1
+            SET @DateFilter = NULL;
+        ELSE IF @DateFilter IS NULL
+            SELECT TOP (1) @DateFilter = [BPA_Syscreated]
+            FROM [dbo].[tb_Paging]
+            WHERE [BPA_Origin] = @Origin AND [BPA_Status] = 1
+            ORDER BY [BPA_Syscreated] DESC;
+
+        SET @entryID = newid();
+
+        INSERT INTO [dbo].[tb_Paging]
+            ([BPA_EntryID], [BPA_Origin], [BPA_Status], [BPA_Syscreated], [BPA_Sysmodified], [Offset],
+             [MoreRecords], [DateFilter], [LastRun], [RecordsLastIteration], [RecordsThisRun])
+        VALUES
+            (@entryID, @Origin, 0, @now, @now, 0, 1, @DateFilter, @now, 0, 0);
+    END
+
+    COMMIT TRANSACTION;
 
     SELECT [BPA_EntryID], [BPA_Origin], [BPA_Status], [Offset], [MoreRecords], [DateFilter],
            [LastRun], [RecordsLastIteration], [RecordsThisRun], [BPA_Syscreated], [BPA_Sysmodified]
     FROM [dbo].[tb_Paging]
-    WHERE [BPA_EntryID] = @newID;
+    WHERE [BPA_EntryID] = @entryID;
 END
 GO
 
@@ -175,21 +200,22 @@ BEGIN
 
     BEGIN TRANSACTION;
 
-    -- Current run: the object's latest row that hasn't finished
+    -- Current run: the object's latest row that hasn't completed
     SELECT TOP (1) @entryID = [BPA_EntryID]
     FROM [dbo].[tb_Paging] WITH (UPDLOCK, HOLDLOCK)
-    WHERE [BPA_Origin] = @Origin AND [MoreRecords] = 1
+    WHERE [BPA_Origin] = @Origin AND [BPA_Status] = 0
     ORDER BY [BPA_Syscreated] DESC;
 
     IF @entryID IS NULL
     BEGIN
-        SET @msg = N'No run in progress for origin ''' + @Origin + N'''; call usp_Paging_Start first.';
+        SET @msg = N'No run in progress for origin ''' + @Origin + N'''; call usp_Paging_Init first.';
         THROW 50022, @msg, 1;
     END
 
     UPDATE [dbo].[tb_Paging]
     SET [Offset]               = CASE WHEN @MoreRecords = 1 THEN [Offset] + @pageLimit ELSE [Offset] END,
         [MoreRecords]          = @MoreRecords,
+        [BPA_Status]           = CASE WHEN @MoreRecords = 1 THEN 0 ELSE 1 END,  -- 1 = run complete
         [LastRun]              = @now,
         [RecordsLastIteration] = @Records,
         [RecordsThisRun]       = [RecordsThisRun] + @Records,
@@ -208,8 +234,9 @@ GO
 /*
     Example FROM task for vendor bills:
 
-    EXEC dbo.usp_Paging_Start @Origin = N'VendorBill';                  -- incremental
-    EXEC dbo.usp_Paging_Start @Origin = N'VendorBill', @FullLoad = 1;   -- full load
+    -- start of every iteration: returns the run in progress, or starts a new one
+    EXEC dbo.usp_Paging_Init @Origin = N'VendorBill';                  -- incremental
+    EXEC dbo.usp_Paging_Init @Origin = N'VendorBill', @FullLoad = 1;   -- full load (new run only)
 
     -- fetch a page at the returned Offset, then at the end of the iteration:
     -- (map the webservice connector's response XML to @ResponseXml in the BPA step)
@@ -218,7 +245,7 @@ GO
         -- Offset 0 -> 1000
     EXEC dbo.usp_Paging_Update @Origin = N'VendorBill',
         @ResponseXml = N'<Response><count>350</count><hasMore>false</hasMore><items>...</items></Response>';
-        -- last page, run finished
+        -- last page: run complete (BPA_Status = 1)
 
     -- current / last run per object
     SELECT p.*
@@ -226,4 +253,16 @@ GO
     WHERE p.[BPA_Syscreated] = (SELECT MAX(x.[BPA_Syscreated])
                                 FROM dbo.tb_Paging x
                                 WHERE x.[BPA_Origin] = p.[BPA_Origin]);
+
+    -- One-off cleanup after the earlier version, which didn't set BPA_Status and
+    -- inserted a row per iteration:
+    -- 1. mark runs that already finished as complete
+    UPDATE dbo.tb_Paging SET [BPA_Status] = 1 WHERE [MoreRecords] = 0 AND [BPA_Status] = 0;
+    -- 2. keep only the latest in-progress row per object
+    DELETE p
+    FROM dbo.tb_Paging p
+    WHERE p.[BPA_Status] = 0
+      AND EXISTS (SELECT 1 FROM dbo.tb_Paging x
+                  WHERE x.[BPA_Origin] = p.[BPA_Origin] AND x.[BPA_Status] = 0
+                    AND x.[BPA_Syscreated] > p.[BPA_Syscreated]);
 */
