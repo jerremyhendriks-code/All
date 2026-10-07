@@ -18,14 +18,18 @@
         object's last completed run (so only records changed since then are fetched).
         @FullLoad = 1 leaves DateFilter NULL.
 
-    dbo.usp_Paging_Update @Origin, @Records
-        Call at the end of each iteration with the number of records picked up.
-        Updates the object's current run (its latest row with MoreRecords = 1):
-        sets LastRun, RecordsLastIteration and adds @Records to RecordsThisRun.
-        - If there are more records, Offset moves on by the page limit (1000).
-        - If not, MoreRecords is set to 0 and the run is finished.
-        @MoreRecords can be passed explicitly; when left NULL it is 1 if a full
-        page (1000 records) was picked up, otherwise 0.
+    dbo.usp_Paging_Update @Origin, @ResponseXml
+        Call at the end of each iteration with the webservice connector's response
+        XML (mapped as a string). The procedure reads the first <count> and
+        <hasMore> elements at the start of the response:
+            <count>1000</count>
+            <hasMore>true</hasMore>
+        and updates the object's current run (its latest row with MoreRecords = 1):
+        sets LastRun, RecordsLastIteration = count and adds count to RecordsThisRun.
+        - If hasMore is true, Offset moves on by the page limit (1000).
+        - If hasMore is false, MoreRecords is set to 0 and the run is finished.
+        - If <hasMore> is missing, a full page (count = 1000) counts as more records.
+        Raises an error if <count> is missing or not a number from 0 to 1000.
         Returns the updated row.
 
     Safe to re-run: the table is only created if missing; procedures use CREATE OR ALTER.
@@ -123,22 +127,51 @@ GO
 
 CREATE OR ALTER PROCEDURE [dbo].[usp_Paging_Update]
     @Origin      nvarchar(50),
-    @Records     int,
-    @MoreRecords bit = NULL
+    @ResponseXml nvarchar(max)
 AS
 BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
 
     DECLARE @pageLimit int = 1000, @now datetime = getdate(), @msg nvarchar(2048),
-            @entryID uniqueidentifier;
+            @entryID uniqueidentifier, @Records int, @MoreRecords bit,
+            @start int, @end int, @value nvarchar(50);
 
     IF @Origin IS NULL
         THROW 50020, N'@Origin is required.', 1;
-    IF @Records IS NULL OR @Records NOT BETWEEN 0 AND @pageLimit
-        THROW 50021, N'@Records must be between 0 and 1000 (the page limit).', 1;
+    IF @ResponseXml IS NULL
+        THROW 50023, N'@ResponseXml is required.', 1;
 
-    SET @MoreRecords = ISNULL(@MoreRecords, CASE WHEN @Records = @pageLimit THEN 1 ELSE 0 END);
+    -- <count>...</count>: the first one in the response (before the items)
+    SET @start = CHARINDEX(N'<count>', @ResponseXml);
+    SET @end   = CASE WHEN @start > 0 THEN CHARINDEX(N'</count>', @ResponseXml, @start) ELSE 0 END;
+    IF @end = 0
+        THROW 50024, N'No <count> element found in @ResponseXml.', 1;
+
+    SET @value   = LTRIM(RTRIM(SUBSTRING(@ResponseXml, @start + LEN(N'<count>'), @end - @start - LEN(N'<count>'))));
+    SET @Records = TRY_CAST(@value AS int);
+    IF @Records IS NULL OR @Records NOT BETWEEN 0 AND @pageLimit
+    BEGIN
+        SET @msg = N'<count> in @ResponseXml must be a number from 0 to 1000 (the page limit), got '''
+                 + @value + N'''.';
+        THROW 50021, @msg, 1;
+    END
+
+    -- <hasMore>true|false</hasMore>; if missing, a full page means there are more records
+    SET @start = CHARINDEX(N'<hasMore>', @ResponseXml);
+    SET @end   = CASE WHEN @start > 0 THEN CHARINDEX(N'</hasMore>', @ResponseXml, @start) ELSE 0 END;
+    IF @end > 0
+    BEGIN
+        SET @value       = LTRIM(RTRIM(SUBSTRING(@ResponseXml, @start + LEN(N'<hasMore>'), @end - @start - LEN(N'<hasMore>'))));
+        SET @MoreRecords = TRY_CAST(@value AS bit);
+        IF @MoreRecords IS NULL
+        BEGIN
+            SET @msg = N'<hasMore> in @ResponseXml must be true or false, got ''' + @value + N'''.';
+            THROW 50025, @msg, 1;
+        END
+    END
+    ELSE
+        SET @MoreRecords = CASE WHEN @Records = @pageLimit THEN 1 ELSE 0 END;
 
     BEGIN TRANSACTION;
 
@@ -179,8 +212,13 @@ GO
     EXEC dbo.usp_Paging_Start @Origin = N'VendorBill', @FullLoad = 1;   -- full load
 
     -- fetch a page at the returned Offset, then at the end of the iteration:
-    EXEC dbo.usp_Paging_Update @Origin = N'VendorBill', @Records = 1000;  -- Offset 0 -> 1000
-    EXEC dbo.usp_Paging_Update @Origin = N'VendorBill', @Records = 350;   -- last page, run finished
+    -- (map the webservice connector's response XML to @ResponseXml in the BPA step)
+    EXEC dbo.usp_Paging_Update @Origin = N'VendorBill',
+        @ResponseXml = N'<Response><count>1000</count><hasMore>true</hasMore><items>...</items></Response>';
+        -- Offset 0 -> 1000
+    EXEC dbo.usp_Paging_Update @Origin = N'VendorBill',
+        @ResponseXml = N'<Response><count>350</count><hasMore>false</hasMore><items>...</items></Response>';
+        -- last page, run finished
 
     -- current / last run per object
     SELECT p.*
