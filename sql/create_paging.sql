@@ -20,10 +20,18 @@
         - Only when there is no run in progress (the last one completed, or this is
           the first run) is a new row inserted, with BPA_Status = 0, Offset = 0,
           MoreRecords = 1 and the counters at 0.
-        For a new run, DateFilter is taken from @DateFilter, or else from the start
-        time of the object's last completed run (so only records changed since then
-        are fetched). @FullLoad = 1 leaves DateFilter NULL. Both are ignored when a
+        For a new run, DateFilter is set once and then kept for the whole run:
+        1. @FullLoad = 1          -> NULL (fetch everything)
+        2. @DateFilter            -> that value
+        3. @StagingTable          -> MAX(@LastModifiedColumn) of the object's staging
+                                     table (e.g. N'dbo.tb_Netsuite_VendorBill' with
+                                     column N'last_modified'); NULL if the table is empty
+        4. otherwise              -> start of the object's last completed run
+        It is fixed at the start of the run because the staging table's max changes
+        as pages are imported during the run. These parameters are ignored when a
         run is already in progress.
+        The returned DateFilterText is DateFilter as 'YYYY-MM-DD HH:MI:SS', ready for
+        the query placeholder (TO_DATE(..., 'YYYY-MM-DD HH24:MI:SS') in SuiteQL).
 
     dbo.usp_Paging_Update @Origin, @ResponseXml
         Call at the end of each iteration with the webservice connector's response
@@ -99,15 +107,18 @@ ELSE
 GO
 
 CREATE OR ALTER PROCEDURE [dbo].[usp_Paging_Init]
-    @Origin     nvarchar(50),
-    @DateFilter datetime = NULL,
-    @FullLoad   bit      = 0
+    @Origin             nvarchar(50),
+    @StagingTable       nvarchar(256) = NULL,
+    @LastModifiedColumn sysname       = N'last_modified',
+    @DateFilter         datetime      = NULL,
+    @FullLoad           bit           = 0
 AS
 BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
 
-    DECLARE @now datetime = getdate(), @entryID uniqueidentifier;
+    DECLARE @now datetime = getdate(), @entryID uniqueidentifier, @msg nvarchar(2048),
+            @objectID int, @sql nvarchar(max);
 
     IF @Origin IS NULL
         THROW 50010, N'@Origin is required.', 1;
@@ -123,10 +134,30 @@ BEGIN
     -- No run in progress: start a new one
     IF @entryID IS NULL
     BEGIN
-        -- Default DateFilter: start of the object's last completed run
         IF @FullLoad = 1
             SET @DateFilter = NULL;
+        ELSE IF @DateFilter IS NULL AND @StagingTable IS NOT NULL
+        BEGIN
+            -- Latest last-modified date already in the object's staging table
+            SET @objectID = OBJECT_ID(@StagingTable, N'U');
+            IF @objectID IS NULL
+            BEGIN
+                SET @msg = N'Staging table ''' + @StagingTable + N''' not found.';
+                THROW 50011, @msg, 1;
+            END
+            IF COL_LENGTH(@StagingTable, @LastModifiedColumn) IS NULL
+            BEGIN
+                SET @msg = N'Column ''' + @LastModifiedColumn + N''' not found in ''' + @StagingTable + N'''.';
+                THROW 50012, @msg, 1;
+            END
+
+            -- Style 120 reads text stored as 'YYYY-MM-DD HH:MI:SS'; datetime columns are taken as is
+            SET @sql = N'SELECT @maxDate = MAX(TRY_CONVERT(datetime, ' + QUOTENAME(@LastModifiedColumn) + N', 120)) FROM '
+                     + QUOTENAME(OBJECT_SCHEMA_NAME(@objectID)) + N'.' + QUOTENAME(OBJECT_NAME(@objectID)) + N';';
+            EXEC sys.sp_executesql @sql, N'@maxDate datetime OUTPUT', @maxDate = @DateFilter OUTPUT;
+        END
         ELSE IF @DateFilter IS NULL
+            -- No staging table given: start of the object's last completed run
             SELECT TOP (1) @DateFilter = [BPA_Syscreated]
             FROM [dbo].[tb_Paging]
             WHERE [BPA_Origin] = @Origin AND [BPA_Status] = 1
@@ -144,6 +175,7 @@ BEGIN
     COMMIT TRANSACTION;
 
     SELECT [BPA_EntryID], [BPA_Origin], [BPA_Status], [Offset], [MoreRecords], [DateFilter],
+           CONVERT(varchar(19), [DateFilter], 120) AS [DateFilterText],
            [LastRun], [RecordsLastIteration], [RecordsThisRun], [BPA_Syscreated], [BPA_Sysmodified]
     FROM [dbo].[tb_Paging]
     WHERE [BPA_EntryID] = @entryID;
@@ -235,7 +267,8 @@ GO
     Example FROM task for vendor bills:
 
     -- start of every iteration: returns the run in progress, or starts a new one
-    EXEC dbo.usp_Paging_Init @Origin = N'VendorBill';                  -- incremental
+    EXEC dbo.usp_Paging_Init @Origin = N'VendorBill',
+         @StagingTable = N'dbo.tb_Netsuite_VendorBill', @LastModifiedColumn = N'last_modified';  -- incremental
     EXEC dbo.usp_Paging_Init @Origin = N'VendorBill', @FullLoad = 1;   -- full load (new run only)
 
     -- fetch a page at the returned Offset, then at the end of the iteration:
