@@ -4,7 +4,9 @@
 
     dbo.tb_Netsuite_PaginationLog
         One row per reset, fetched page and completed run, so you can see how a
-        sync progressed and where it stopped.
+        sync progressed and where it stopped. Page rows hold the rows fetched,
+        inserted, updated and skipped for that page; the completed row holds the
+        totals for the whole run.
 
     dbo.usp_Netsuite_VendorBill_ResetPaging
         Call before starting a sync. Sets current_offset back to 0, clears
@@ -21,15 +23,21 @@
         - @offset must equal the stored current_offset; otherwise the page is out of
           order (or already processed) and the procedure raises an error.
         - Moves current_offset on by @rows_fetched and stores total_results / has_more.
+        - @rows_inserted, @rows_updated and @rows_skipped (optional) are the row
+          counts from storing the page; they are logged on the page row.
         - When @has_more = 0 the run is complete: last_run_completed_at is set,
           last_modified_from moves to last_run_started_at (so records changed during
           the run are picked up next time) and current_offset goes back to 0.
+          A 'completed' log row is added with the run's total rows fetched,
+          inserted, updated and skipped (summed over its page rows).
         Returns the settings row.
 
     Both procedures take @record_type (default N'vendorBill'), so they can be used
     for invoices later as well.
 
-    Safe to re-run: the table is only created if missing; procedures use CREATE OR ALTER.
+    Safe to re-run: the table is only created if missing, the row count columns and
+    their constraints are added to an existing table if missing, and procedures use
+    CREATE OR ALTER.
 */
 SET NOCOUNT ON;
 GO
@@ -44,6 +52,9 @@ BEGIN
         page_offset         int                   NULL,
         page_size           int                   NULL,
         rows_fetched        int                   NULL,
+        rows_inserted       int                   NULL,
+        rows_updated        int                   NULL,
+        rows_skipped        int                   NULL,
         total_results       int                   NULL,
         has_more            bit                   NULL,
         last_modified_from  datetime2(0)          NULL,
@@ -63,6 +74,32 @@ BEGIN
 END
 ELSE
     PRINT N'Skipped dbo.[tb_Netsuite_PaginationLog] (already exists)';
+GO
+
+-- Add the row count columns to a log table created by an earlier version of this script
+IF COL_LENGTH(N'dbo.tb_Netsuite_PaginationLog', N'rows_inserted') IS NULL
+BEGIN
+    ALTER TABLE dbo.tb_Netsuite_PaginationLog ADD rows_inserted int NULL;
+    PRINT N'Added dbo.[tb_Netsuite_PaginationLog].[rows_inserted]';
+END
+IF COL_LENGTH(N'dbo.tb_Netsuite_PaginationLog', N'rows_updated') IS NULL
+BEGIN
+    ALTER TABLE dbo.tb_Netsuite_PaginationLog ADD rows_updated int NULL;
+    PRINT N'Added dbo.[tb_Netsuite_PaginationLog].[rows_updated]';
+END
+IF COL_LENGTH(N'dbo.tb_Netsuite_PaginationLog', N'rows_skipped') IS NULL
+BEGIN
+    ALTER TABLE dbo.tb_Netsuite_PaginationLog ADD rows_skipped int NULL;
+    PRINT N'Added dbo.[tb_Netsuite_PaginationLog].[rows_skipped]';
+END
+GO
+
+IF OBJECT_ID(N'dbo.CK_tb_Netsuite_PaginationLog_row_counts', N'C') IS NULL
+    ALTER TABLE dbo.tb_Netsuite_PaginationLog ADD CONSTRAINT CK_tb_Netsuite_PaginationLog_row_counts
+        CHECK (    (rows_fetched  IS NULL OR rows_fetched  >= 0)
+               AND (rows_inserted IS NULL OR rows_inserted >= 0)
+               AND (rows_updated  IS NULL OR rows_updated  >= 0)
+               AND (rows_skipped  IS NULL OR rows_skipped  >= 0));
 GO
 
 CREATE OR ALTER PROCEDURE dbo.usp_Netsuite_VendorBill_ResetPaging
@@ -120,6 +157,9 @@ CREATE OR ALTER PROCEDURE dbo.usp_Netsuite_VendorBill_UpdatePaging
     @rows_fetched   int,
     @has_more       bit,
     @total_results  int          = NULL,
+    @rows_inserted  int          = NULL,
+    @rows_updated   int          = NULL,
+    @rows_skipped   int          = NULL,
     @record_type    nvarchar(50) = N'vendorBill'
 AS
 BEGIN
@@ -137,6 +177,8 @@ BEGIN
         THROW 50022, N'@has_more is required.', 1;
     IF @total_results < 0
         THROW 50023, N'@total_results must be 0 or greater.', 1;
+    IF @rows_inserted < 0 OR @rows_updated < 0 OR @rows_skipped < 0
+        THROW 50027, N'@rows_inserted, @rows_updated and @rows_skipped must be 0 or greater.', 1;
 
     BEGIN TRANSACTION;
 
@@ -167,8 +209,9 @@ BEGIN
 
     INSERT INTO dbo.tb_Netsuite_PaginationLog
         (record_type, event_type, run_started_at, page_offset, page_size, rows_fetched,
-         total_results, has_more, last_modified_from)
+         rows_inserted, rows_updated, rows_skipped, total_results, has_more, last_modified_from)
     SELECT record_type, N'page', last_run_started_at, @offset, page_size, @rows_fetched,
+           @rows_inserted, @rows_updated, @rows_skipped,
            ISNULL(@total_results, total_results), @has_more, last_modified_from
     FROM dbo.tb_Netsuite_PaginationSettings
     WHERE record_type = @record_type;
@@ -194,13 +237,23 @@ BEGIN
             updated_at            = @now
         WHERE record_type = @record_type;
 
+        -- Run totals: sum of this run's page rows (including the one logged above)
         INSERT INTO dbo.tb_Netsuite_PaginationLog
-            (record_type, event_type, run_started_at, page_offset, page_size,
-             total_results, has_more, last_modified_from)
-        SELECT record_type, N'completed', @run_started_at, @offset + @rows_fetched, page_size,
-               total_results, 0, last_modified_from
-        FROM dbo.tb_Netsuite_PaginationSettings
-        WHERE record_type = @record_type;
+            (record_type, event_type, run_started_at, page_offset, page_size, rows_fetched,
+             rows_inserted, rows_updated, rows_skipped, total_results, has_more, last_modified_from)
+        SELECT s.record_type, N'completed', @run_started_at, @offset + @rows_fetched, s.page_size,
+               t.rows_fetched, t.rows_inserted, t.rows_updated, t.rows_skipped,
+               s.total_results, 0, s.last_modified_from
+        FROM dbo.tb_Netsuite_PaginationSettings s
+        CROSS APPLY (SELECT rows_fetched  = SUM(l.rows_fetched),
+                            rows_inserted = SUM(l.rows_inserted),
+                            rows_updated  = SUM(l.rows_updated),
+                            rows_skipped  = SUM(l.rows_skipped)
+                     FROM dbo.tb_Netsuite_PaginationLog l
+                     WHERE l.record_type = @record_type
+                       AND l.event_type = N'page'
+                       AND l.run_started_at = @run_started_at) t
+        WHERE s.record_type = @record_type;
     END
 
     COMMIT TRANSACTION;
@@ -220,5 +273,13 @@ GO
 
     -- after fetching each page from NetSuite (offset 0, 1000, 2000, ...):
     EXEC dbo.usp_Netsuite_VendorBill_UpdatePaging
-        @offset = 0, @rows_fetched = 1000, @total_results = 2350, @has_more = 1;
+        @offset = 0, @rows_fetched = 1000, @total_results = 2350, @has_more = 1,
+        @rows_inserted = 940, @rows_updated = 55, @rows_skipped = 5;
+
+    -- row counts per run
+    SELECT run_started_at, logged_at AS run_completed_at, rows_fetched,
+           rows_inserted, rows_updated, rows_skipped
+    FROM dbo.tb_Netsuite_PaginationLog
+    WHERE record_type = N'vendorBill' AND event_type = N'completed'
+    ORDER BY run_started_at DESC;
 */
