@@ -27,11 +27,17 @@
                                      table (e.g. N'dbo.tb_Netsuite_VendorBill' with
                                      column N'last_modified'); NULL if the table is empty
         4. otherwise              -> start of the object's last completed run
+        5. still nothing (empty staging table / first run) -> @InitialDateFilter
+                                     (default 2026-01-01)
         It is fixed at the start of the run because the staging table's max changes
         as pages are imported during the run. These parameters are ignored when a
         run is already in progress.
         The returned DateFilterText is DateFilter as 'YYYY-MM-DD HH:MI:SS', ready for
-        the query placeholder (TO_DATE(..., 'YYYY-MM-DD HH24:MI:SS') in SuiteQL).
+        the query placeholder (TO_DATE(..., 'YYYY-MM-DD HH24:MI:SS') in SuiteQL);
+        for a full load it is '1900-01-01 00:00:00'. Use it with a strict '>' on
+        lastmodifieddate so the records already in staging aren't fetched again.
+        Map Offset and DateFilterText from this procedure's result into the query;
+        don't read them from tb_Paging separately.
 
     dbo.usp_Paging_Update @Origin, @ResponseXml
         Call at the end of each iteration with the webservice connector's response
@@ -111,7 +117,8 @@ CREATE OR ALTER PROCEDURE [dbo].[usp_Paging_Init]
     @StagingTable       nvarchar(256) = NULL,
     @LastModifiedColumn sysname       = N'last_modified',
     @DateFilter         datetime      = NULL,
-    @FullLoad           bit           = 0
+    @FullLoad           bit           = 0,
+    @InitialDateFilter  datetime      = '2026-01-01'
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -163,6 +170,10 @@ BEGIN
             WHERE [BPA_Origin] = @Origin AND [BPA_Status] = 1
             ORDER BY [BPA_Syscreated] DESC;
 
+        -- Nothing to go on yet (empty staging table, first run): start from @InitialDateFilter
+        IF @DateFilter IS NULL AND @FullLoad = 0
+            SET @DateFilter = @InitialDateFilter;
+
         SET @entryID = newid();
 
         INSERT INTO [dbo].[tb_Paging]
@@ -175,7 +186,8 @@ BEGIN
     COMMIT TRANSACTION;
 
     SELECT [BPA_EntryID], [BPA_Origin], [BPA_Status], [Offset], [MoreRecords], [DateFilter],
-           CONVERT(varchar(19), [DateFilter], 120) AS [DateFilterText],
+           -- Ready for the query placeholder; a full load (NULL) gets a date before any record
+           ISNULL(CONVERT(varchar(19), [DateFilter], 120), '1900-01-01 00:00:00') AS [DateFilterText],
            [LastRun], [RecordsLastIteration], [RecordsThisRun], [BPA_Syscreated], [BPA_Sysmodified]
     FROM [dbo].[tb_Paging]
     WHERE [BPA_EntryID] = @entryID;
