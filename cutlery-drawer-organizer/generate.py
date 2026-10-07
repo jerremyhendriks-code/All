@@ -12,6 +12,10 @@ Layout (top view, drawer front at the bottom):
 The 398 mm kitchen-knife bin is too long for a home printer, so it is printed
 as two halves. The front half has a tongue that slides into the back half;
 a drop of glue there is optional.
+
+With a large printer (bed >= 200 x 400 mm) print either the whole tray as one
+piece (one_piece_full_tray.stl) or just the kitchen-knife bin in one piece
+(kitchen_knives_one_piece.stl) together with the other separate bins.
 """
 import manifold3d as m
 import trimesh
@@ -93,6 +97,29 @@ def kitchen_back():
     return open_bin(KITCHEN_W, HALF_LEN).mirror((0, 1, 0)).translate((0, HALF_LEN, 0))
 
 
+def cell_cavity(x0, y0, w, h):
+    """Cavity for one compartment of the one-piece tray: outer walls WALL, dividers WALL."""
+    def inset(v, edge):
+        return WALL if abs(v - edge) < 1e-6 else WALL / 2
+    x1, y1 = x0 + w, y0 + h
+    ax, ay = x0 + inset(x0, 0), y0 + inset(y0, 0)
+    bx, by = x1 - inset(x1, W), y1 - inset(y1, L)
+    return rounded_box(bx - ax, by - ay, HEIGHT, RADIUS - WALL).translate((ax, ay, FLOOR))
+
+
+def one_piece_tray():
+    cells = [(0, 0, KITCHEN_W, L)]
+    x = KITCHEN_W
+    for w in (FORK_W, KNIFE_W, SPOON_W):
+        cells.append((x, 0, w, BIG_LEN))
+        x += w
+    cells += [(KITCHEN_W + i * SMALL_W, BIG_LEN, SMALL_W, SMALL_LEN) for i in range(2)]
+    tray = rounded_box(W, L, HEIGHT, RADIUS)
+    for c in cells:
+        tray -= cell_cavity(*c)
+    return tray
+
+
 def save(solid, path):
     mesh = solid.to_mesh()
     tm = trimesh.Trimesh(np.array(mesh.vert_properties)[:, :3], np.array(mesh.tri_verts))
@@ -102,6 +129,10 @@ def save(solid, path):
 
 
 if __name__ == "__main__":
+    # For a large printer (bed >= 200 x 400 mm)
+    save(one_piece_tray(), "one_piece_full_tray.stl")
+    save(bin_(KITCHEN_W, L), "kitchen_knives_one_piece.stl")
+    # For a home printer
     save(kitchen_front(), "kitchen_knives_front_half.stl")
     save(kitchen_back(), "kitchen_knives_back_half.stl")
     save(bin_(FORK_W, BIG_LEN), "fork_bin.stl")
