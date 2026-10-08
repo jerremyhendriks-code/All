@@ -1,0 +1,127 @@
+<!--
+    Foundation Group - output of the vendorBill FROM task (NetSuite connector), excerpt
+    with two bills. Note the decimal comma (748,29): the connector formats numbers with
+    the regional settings of the machine it runs on.
+-->
+<DataOutput>
+	<vendorBill>
+		<balance>0</balance>
+		<createdDate>2026-06-24T09:03:00.0000000Z</createdDate>
+		<custbody_11724_pay_bank_fees>False</custbody_11724_pay_bank_fees>
+		<custbody_9997_is_for_ep_eft>False</custbody_9997_is_for_ep_eft>
+		<custbody_bit_zonalurl>https://glendola.zonal-acquire.com/order/15614163</custbody_bit_zonalurl>
+		<custbody_cash_register>False</custbody_cash_register>
+		<custbody_emea_transaction_type>vendbill</custbody_emea_transaction_type>
+		<custbody_nondeductible_processed>False</custbody_nondeductible_processed>
+		<custbody_report_timestamp>24/6/2026 1:59:44</custbody_report_timestamp>
+		<custbody_sii_article_72_73>False</custbody_sii_article_72_73>
+		<custbody_sii_not_reported_in_time>False</custbody_sii_not_reported_in_time>
+		<custbody_stc_amount_after_discount>748,29</custbody_stc_amount_after_discount>
+		<custbody_stc_tax_after_discount>0</custbody_stc_tax_after_discount>
+		<custbody_stc_total_after_discount>748,29</custbody_stc_total_after_discount>
+		<documentStatus>D</documentStatus>
+		<dueDate>2026-03-01</dueDate>
+		<exchangeRate>1</exchangeRate>
+		<excludeFromGLNumbering>False</excludeFromGLNumbering>
+		<id>102</id>
+		<lastModifiedDate>2026-06-24T14:03:00.0000000Z</lastModifiedDate>
+		<memo>Order GLEN15614163</memo>
+		<overrideInstallments>False</overrideInstallments>
+		<paymentHold>False</paymentHold>
+		<prevDate>2026-03-01</prevDate>
+		<received>True</received>
+		<taxTotal>6,2</taxTotal>
+		<toBePrinted>False</toBePrinted>
+		<total>37,2</total>
+		<tranDate>2026-03-01</tranDate>
+		<tranId>0908688534</tranId>
+		<transactionNumber>VENDBILL1</transactionNumber>
+		<userTotal>37,2</userTotal>
+		<currency>
+			<id>1</id>
+			<refName>GBP</refName>
+		</currency>
+		<expense>
+			<totalResults>2</totalResults>
+			<items>
+				<amount>15</amount>
+				<grossAmt>18</grossAmt>
+				<isBillable>False</isBillable>
+				<line>6</line>
+				<tax1Amt>3</tax1Amt>
+				<taxRate1>20</taxRate1>
+			</items>
+			<items>
+				<amount>16</amount>
+				<grossAmt>19,2</grossAmt>
+				<isBillable>False</isBillable>
+				<line>7</line>
+				<tax1Amt>3,2</tax1Amt>
+				<taxRate1>20</taxRate1>
+			</items>
+		</expense>
+		<entity>
+			<id>152</id>
+			<refName>Moisterize FA Ltd.</refName>
+		</entity>
+	</vendorBill>
+	<vendorBill>
+		<balance>-107120</balance>
+		<billAddress>Test Vendor UK
+Street 1
+London  AB2 6NN
+United Kingdom</billAddress>
+		<billingAddress_text>Test Vendor UK
+Street 1
+London  AB2 6NN
+United Kingdom</billingAddress_text>
+		<createdDate>2026-09-29T08:18:00.0000000Z</createdDate>
+		<custbody_11724_pay_bank_fees>False</custbody_11724_pay_bank_fees>
+		<custbody_9997_is_for_ep_eft>False</custbody_9997_is_for_ep_eft>
+		<custbody_cash_register>False</custbody_cash_register>
+		<custbody_emea_transaction_type>vendbill</custbody_emea_transaction_type>
+		<custbody_nondeductible_processed>False</custbody_nondeductible_processed>
+		<custbody_report_timestamp>29/9/2026 1:17:18</custbody_report_timestamp>
+		<custbody_sii_article_72_73>False</custbody_sii_article_72_73>
+		<custbody_sii_not_reported_in_time>False</custbody_sii_not_reported_in_time>
+		<custbody_stc_amount_after_discount>12000</custbody_stc_amount_after_discount>
+		<custbody_stc_tax_after_discount>120</custbody_stc_tax_after_discount>
+		<custbody_stc_total_after_discount>12120</custbody_stc_total_after_discount>
+		<documentStatus>A</documentStatus>
+		<dueDate>2026-01-31</dueDate>
+		<exchangeRate>1</exchangeRate>
+		<excludeFromGLNumbering>False</excludeFromGLNumbering>
+		<id>4864</id>
+		<lastModifiedDate>2026-09-29T08:23:00.0000000Z</lastModifiedDate>
+		<overrideInstallments>False</overrideInstallments>
+		<paymentHold>False</paymentHold>
+		<prevDate>2026-09-29</prevDate>
+		<received>True</received>
+		<taxTotal>120</taxTotal>
+		<toBePrinted>False</toBePrinted>
+		<total>12120</total>
+		<tranDate>2026-01-01</tranDate>
+		<tranId>TEST Fixed Asset 2</tranId>
+		<transactionNumber>VENDBILL37</transactionNumber>
+		<userTotal>12120</userTotal>
+		<currency>
+			<id>1</id>
+			<refName>GBP</refName>
+		</currency>
+		<expense>
+			<totalResults>1</totalResults>
+			<items>
+				<amount>12000</amount>
+				<grossAmt>12120</grossAmt>
+				<isBillable>False</isBillable>
+				<line>1</line>
+				<tax1Amt>120</tax1Amt>
+				<taxRate1>1</taxRate1>
+			</items>
+		</expense>
+		<entity>
+			<id>575</id>
+			<refName>Test Vendor UK</refName>
+		</entity>
+	</vendorBill>
+</DataOutput>

@@ -367,6 +367,7 @@ VENDORBILL = [
         'group': 'vendorbill',
         'table': 'tb_Netsuite_VendorBill', 'record': 'vendorBill', 'source': 'REST',
         'export_path': ['vendorBill'], 'bod': 'vendorBill_BOD_example.xml',
+        'output': 'vendorBill_connector_output_sample.xml',
         'columns': [
             ID, EXTERNAL_ID,
             col('tranId', 'nvarchar(255)', "vendor's invoice number (Reference No.)"),
@@ -393,6 +394,7 @@ VENDORBILL = [
             col('discountAmount', 'decimal(19,4)'),
             col('discountDate', 'date'),
             col('memo', 'nvarchar(4000)'),
+            col('documentStatus', 'nvarchar(10)', 'status code: A Open, B Paid In Full, C Cancelled, D Pending Approval, E Rejected'),
             col('paymentHold', 'bit'),
             col('received', 'bit'),
             col('toBePrinted', 'bit'),
@@ -421,6 +423,7 @@ VENDORBILL = [
             col('custbody_stc_discountpercent', 'decimal(9,4)'),
             col('custbody_stc_daysuntilexpiry', 'int'),
             col('custbody_stc_payment_transaction_id', 'nvarchar(100)'),
+            col('custbody_bit_zonalurl', 'nvarchar(1000)', 'link to the order in Zonal Acquire'),
         ],
         'children': [
             {
@@ -523,8 +526,9 @@ BOD_SKIP = {
         'currencyname': 'stored as currencyRefName',
         'currencysymbol': 'currency label', 'currencyprecision': 'property of the currency',
         'isbasecurrency': 'property of the currency',
-        'documentstatus': 'internal status code; status is stored',
-        'balance': 'not in the REST vendorBill record (amount open: SuiteQL foreignamountunpaid)',
+        'balance': "the vendor's balance, not the bill's open amount (bill 4864: -107120 against a total of 12120); open amount: SuiteQL foreignamountunpaid",
+        'billingaddress_text': 'same text as billAddress (stored)',
+        'overrideinstallments': 'installments not used',
         'origtotal': 'UI copy of total', 'creditlimit_origtotal': 'UI copy of total',
         'billingaddress': 'address subrecord key; the address itself is stored',
         'billingaddress_key': 'address subrecord key', 'billoverride': 'address entered by hand (T/F)',
@@ -892,13 +896,77 @@ def bod_machine(path, name):
     return names, values
 
 
+def load_output(path, record, only_id=None):
+    """Connector FROM-task output: {'': header values, <sublist>: line values}; values per
+    key ('field' or 'field.id' / 'field.refName') as a list of the texts seen.
+    only_id: just the record with that id."""
+    out = {'': {}}
+    for rec in ET.parse(path).getroot().iter(record):
+        if only_id is not None and rec.findtext('id') != only_id:
+            continue
+        for e in rec:
+            kids = list(e)
+            if not kids:
+                out[''].setdefault(e.tag, []).append((e.text or '').strip())
+            elif e.find('items') is not None:
+                lines = out.setdefault(e.tag, {})
+                for item in e.findall('items'):
+                    for f in item:
+                        if len(f):
+                            for sub in f:
+                                lines.setdefault(f'{f.tag}.{sub.tag}', []).append((sub.text or '').strip())
+                        else:
+                            lines.setdefault(f.tag, []).append((f.text or '').strip())
+            else:
+                for sub in kids:
+                    out[''].setdefault(f'{e.tag}.{sub.tag}', []).append((sub.text or '').strip())
+    return out
+
+
+OUT_PATTERNS = {
+    'bit': r'(?i)true|false',
+    'int': r'-?\d+',
+    'decimal': r'-?\d+([.,]\d+)?',
+    'date': r'\d{4}-\d{2}-\d{2}',
+    'datetime2': r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z?',
+}
+
+
+def output_type_error(sql, values):
+    base = sql_base(sql)
+    m = re.search(r'nvarchar\((\d+)\)', sql)
+    for v in values:
+        if not v:
+            continue
+        if base in OUT_PATTERNS and not re.fullmatch(OUT_PATTERNS[base], v):
+            return f'value {v[:30]!r} does not fit {base}'
+        if m and len(v) > int(m.group(1)):
+            return f'value longer than {m.group(1)}'
+    return None
+
+
 def is_custom(field):
     return field.split('.')[0].startswith(('cust', 'cseg'))
 
 
-def judge(column, field, part, sql, kind, src, cat, bod_names, bod_vals, unconfirmed):
-    """Returns (rest cell, catalog cell, bod cell, confirmed, error or None)."""
+def judge(column, field, part, sql, kind, src, cat, bod_names, bod_vals, unconfirmed, out=None):
+    """Returns (rest cell, catalog cell, bod cell, output cell, confirmed, error or None)."""
     key = field
+    # FG connector output (the REST record itself, as the connector returns it)
+    out_ok, out_err = False, None
+    if out is None:
+        out_cell = '-'
+    else:
+        values = out.get(f'{field}.{part}' if part else field)
+        if values is None:
+            out_cell = 'not in sample'
+        else:
+            out_err = output_type_error(sql, values) if not part else None
+            out_ok = not out_err and any(values)
+            sample = next((v for v in values if v), '')
+            out_cell = f'**{out_err}**' if out_err else f'`{sample[:30]}`'
+            if out_ok and sql_base(sql) == 'decimal' and any(',' in v for v in values):
+                out_cell += ' (decimal comma)'
     bod_key = field.split('.')[-1].lower()
     # FG BOD
     value = bod_vals.get(bod_key, '') if bod_vals else ''
@@ -912,8 +980,8 @@ def judge(column, field, part, sql, kind, src, cat, bod_names, bod_vals, unconfi
     else:
         bod_cell = 'present' if bod_key in bod_names else 'not in BOD'
     bod_value_ok = bool(value) and not bod_err
-    error = f'BOD {bod_err}' if bod_err else None
-    confirmed = False
+    error = f'BOD {bod_err}' if bod_err else (f'output {out_err}' if out_err else None)
+    confirmed = out_ok
     cells = []
     for name, source in (('REST', src), ('catalog', cat)):
         if not source:
@@ -923,6 +991,8 @@ def judge(column, field, part, sql, kind, src, cat, bod_names, bod_vals, unconfi
         if not err:
             cells.append('ok')
             confirmed = True
+        elif err == 'MISSING' and name == 'REST' and out_ok:
+            cells.append('not in Ellomay metadata (in FG output)')
         elif err == 'MISSING' and name == 'REST' and is_custom(field) and bod_value_ok:
             cells.append('not in metadata (FG custom field)')
         elif err == 'MISSING' and name == 'REST' and field in unconfirmed and bod_names and bod_key in bod_names:
@@ -932,9 +1002,9 @@ def judge(column, field, part, sql, kind, src, cat, bod_names, bod_vals, unconfi
             error = error or f'{name} {err}'
     if not confirmed and bod_value_ok and (cat is None):
         confirmed = True                     # the FG record holds a value of the right type
-    if not src and not cat and not bod_value_ok and is_custom(field):
+    if not src and not cat and not bod_value_ok and not out_ok and is_custom(field):
         error = error or 'custom field without metadata or a BOD value'
-    return cells[0], cells[1], bod_cell, confirmed, error
+    return cells[0], cells[1], bod_cell, out_cell, confirmed, error
 
 
 def validate(args):
@@ -953,8 +1023,11 @@ def validate(args):
         cat = load_catalog(cat_path, rec) if cat_path and os.path.exists(cat_path) else None
         bod_path = os.path.join(args.bod_dir, t['bod']) if t.get('bod') else None
         bod = bod_values(bod_path) if bod_path else None
+        out_path = os.path.join(args.bod_dir, t['output']) if t.get('output') else None
+        output = load_output(out_path, rec) if out_path else None
 
-        groups = [(t['table'], None, t['columns'], rest, set(bod) if bod is not None else None, bod)]
+        groups = [(t['table'], None, t['columns'], rest, set(bod) if bod is not None else None, bod,
+                   output[''] if output else None)]
         for ch in t.get('children', []):
             if ch['kind'] == 'refs':
                 src, names, vals = rest, None, None
@@ -965,30 +1038,37 @@ def validate(args):
                         src.setdefault(k, v)
                 names, vals = (bod_machine(bod_path, ch['bod_machine'])
                                if bod_path and ch.get('bod_machine') else (None, None))
-            groups.append((f"{t['table']}_{ch['suffix']}", ch, ch['columns'], src, names, vals))
+            ch_out = (output.get(ch['field'], {}) if output else None) if ch['kind'] == 'lines' else (
+                output[''] if output else None)
+            groups.append((f"{t['table']}_{ch['suffix']}", ch, ch['columns'], src, names, vals, ch_out))
 
         report += ['', f"## {t['table']} ({rec})", '',
                    f"Design source: {t['source']}. REST metadata: "
                    + ('connector export' + (' + FROM schema' if has_xsd else '') if rest else '**none**')
                    + '. FG metadata-catalog: ' + ('checked' if cat else 'not supplied')
-                   + '. FG BOD: ' + ('checked' if bod else 'none') + '.']
-        for table, ch, columns, src, names, vals in groups:
+                   + '. FG BOD: ' + ('checked' if bod else 'none')
+                   + '. FG connector output: ' + ('checked (sample)' if output else 'none') + '.']
+        missing_in_output = []
+        for table, ch, columns, src, names, vals, out in groups:
             kind = ch['kind'] if ch else None
             confirmed = 0
             report += ['', f'### {table}' + (f" ({rec}/{ch['field']}/items)" if ch else ''), '']
             if ch and ch.get('evidence'):
                 report += [f"Evidence: {ch['evidence']}", '']
-            report += ['| Column | SQL type | REST | FG BOD | FG catalog |', '|---|---|---|---|---|']
+            report += ['| Column | SQL type | REST | FG BOD | FG output | FG catalog |',
+                       '|---|---|---|---|---|---|']
             unconfirmed = (ch or t).get('unconfirmed', {})
             for column, field, part, sql, _note in columns:
                 key = ch['field'] if kind == 'refs' else field
                 ccat = None if (ch and kind == 'lines') else cat
-                rest_cell, cat_cell, bod_cell, ok, err = judge(
-                    column, key, part, sql, kind, src, ccat, names, vals, unconfirmed)
+                rest_cell, cat_cell, bod_cell, out_cell, ok, err = judge(
+                    column, key, part, sql, kind, src, ccat, names, vals, unconfirmed, out)
                 confirmed += ok
                 if err:
                     errors.append(f'{table}.{column}: {err}')
-                report.append(f'| {column} | {sql} | {rest_cell} | {bod_cell} | {cat_cell} |')
+                if out_cell == 'not in sample' and not part == 'refName':
+                    missing_in_output.append(f"{table}.{key}")
+                report.append(f'| {column} | {sql} | {rest_cell} | {bod_cell} | {out_cell} | {cat_cell} |')
             summary.append((table, confirmed, len(columns), bool(src), bool(cat)))
 
         if bod is not None:
@@ -1009,6 +1089,54 @@ def validate(args):
                     skipped.append(f'- **UNEXPLAINED** `{name}` = `{value[:40]}`')
                     errors.append(f"{t['table']}: BOD field {name} has a value but is not stored or explained")
             report += ['', 'BOD fields with a value that are not stored:', ''] + (skipped or ['- none'])
+
+        if output is not None:
+            skip = {k.lower(): v for k, v in BOD_SKIP.get(rec, {}).items()}
+            lists = [('', {f.lower() for _c, f, *_r in t['columns']} | {
+                ch['field'].lower() for ch in t.get('children', [])})]
+            lists += [(ch['field'], {f.lower() for _c, f, *_r in ch['columns']})
+                      for ch in t.get('children', []) if ch['kind'] == 'lines']
+            notes = []
+            for sub, stored in lists:
+                for name, values in sorted(output.get(sub, {}).items()):
+                    base = name.split('.')[0]
+                    if not any(values) or name.lower() in stored or base.lower() in stored or base == 'totalResults':
+                        continue
+                    where = f'{sub}/items/' if sub else ''
+                    if skip.get(base.lower()) and not sub:
+                        notes.append(f'- `{where}{name}`: {skip[base.lower()]}')
+                    else:
+                        notes.append(f'- **UNEXPLAINED** `{where}{name}`')
+                        errors.append(f"{t['table']}: output field {where}{name} has a value but is not stored or explained")
+            commas = sorted({k for sub in output.values() for k, vs in sub.items()
+                             if any(re.fullmatch(r'-?\d+,\d+', v) for v in vs)})
+            report += ['', 'Connector output fields with a value that are not stored:', ''] + (notes or ['- none'])
+            report += ['', 'Columns not in the connector output sample (not selected in the connector object, '
+                       'or empty in every record of the sample):', '']
+            report += [f'- {m}' for m in missing_in_output] or ['- none']
+            # the same record in the BOD and the output: a value in NetSuite that the
+            # connector did not return means the field is not selected in the connector object
+            same = load_output(out_path, rec, bod.get('id')) if bod else None
+            if same and same['']:
+                not_selected = []
+                pairs = [('', t['columns'], bod)]
+                pairs += [(ch['field'], ch['columns'], bod_machine(bod_path, ch['bod_machine'])[1])
+                          for ch in t.get('children', []) if ch.get('bod_machine')]
+                for sub, columns, values in pairs:
+                    got = same.get(sub, {})
+                    for _c, field, part, _sql, _n in columns:
+                        if part == 'refName':
+                            continue
+                        key = f'{field}.{part}' if part else field
+                        if (values or {}).get(field.lower()) and key not in got:
+                            where = f'{sub}/items/' if sub else ''
+                            not_selected.append(f"- `{where}{field}` (NetSuite value `{values[field.lower()][:30]}`)")
+                report += ['', f"Record {bod['id']} is in both the BOD and the output. Fields with a value in "
+                           'NetSuite that the connector did not return, so **not selected in the connector '
+                           'object**:', ''] + (not_selected or ['- none'])
+            if commas:
+                report += ['', f"**Decimal comma** in the output ({', '.join(commas)}): make sure the "
+                           'database step converts `37,2` to 37.20 (not 372 or an error).']
 
     head = ['# Foundation Group NetSuite tables: validation report', '',
             'Generated by `tools/netsuite_masterdata.py validate`. Errors: '

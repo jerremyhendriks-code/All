@@ -142,6 +142,7 @@ CREATE TABLE dbo.tb_Netsuite_VendorBill (
     discountAmount                            decimal(19,4) NULL,
     discountDate                              date NULL,
     memo                                      nvarchar(4000) NULL,
+    documentStatus                            nvarchar(10) NULL,          -- status code: A Open, B Paid In Full, C Cancelled, D Pending Approval, E Rejected
     paymentHold                               bit NULL,
     received                                  bit NULL,
     toBePrinted                               bit NULL,
@@ -173,6 +174,7 @@ CREATE TABLE dbo.tb_Netsuite_VendorBill (
     custbody_stc_discountpercent              decimal(9,4) NULL,
     custbody_stc_daysuntilexpiry              int NULL,
     custbody_stc_payment_transaction_id       nvarchar(100) NULL,
+    custbody_bit_zonalurl                     nvarchar(1000) NULL,        -- link to the order in Zonal Acquire
     CONSTRAINT PK_tb_Netsuite_VendorBill PRIMARY KEY CLUSTERED (BPA_EntryID)
 );
 CREATE NONCLUSTERED INDEX IX_tb_Netsuite_VendorBill_id ON dbo.tb_Netsuite_VendorBill (id) INCLUDE (lastModifiedDate);
