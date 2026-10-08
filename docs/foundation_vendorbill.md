@@ -7,6 +7,7 @@ This page covers reading vendor bills from Foundation Group's NetSuite with the 
 | `netsuite/foundation/vendorBill_BOD_example.xml` | Example bill from the FG sandbox (record XML), the basis for this design |
 | `netsuite/foundation/NetSuiteConnector_vendorBill_Foundation.xml` | Connector object design (`NetSuiteCatalogObj` vendorBill) |
 | `sql/foundation/create_tb_Netsuite_VendorBill.sql` | All three tables: header, Expense, Item. Renames existing tables to `_bak` first. |
+| `sql/foundation/alter_tb_Netsuite_VendorBill.sql` | **For existing tables:** creates a missing child table, adds missing columns, and prints type differences, NOT NULL differences and columns not in the spec without changing them. Safe to run more than once. |
 | `sql/foundation/create_tb_Netsuite_VendorBill_children.sql` | Only the two child tables; a table that already exists is skipped |
 | `docs/foundation_vendorbill_validation.md` | Validation report, column by column |
 | `tools/build_foundation_vendorbill_object.py` | Regenerates the connector object from the Ellomay export |

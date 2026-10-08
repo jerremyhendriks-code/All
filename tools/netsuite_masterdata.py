@@ -8,6 +8,7 @@ two can't drift apart.
     python3 tools/netsuite_masterdata.py sql children > sql/foundation/create_netsuite_masterdata_children.sql
     python3 tools/netsuite_masterdata.py sql full --group vendorbill     > sql/foundation/create_tb_Netsuite_VendorBill.sql
     python3 tools/netsuite_masterdata.py sql children --group vendorbill > sql/foundation/create_tb_Netsuite_VendorBill_children.sql
+    python3 tools/netsuite_masterdata.py sql alter --group vendorbill    > sql/foundation/alter_tb_Netsuite_VendorBill.sql
     python3 tools/netsuite_masterdata.py check-ddl <your CREATE TABLE scripts>
     python3 tools/netsuite_masterdata.py validate --export <Ellomay connector export xml>
             [--xsd-dir <connector FROM-task schemas>]
@@ -755,6 +756,122 @@ def sql_script(which, group):
         lines += ['DROP PROCEDURE #rebuild;', 'GO']
     return '\n'.join(lines) + '\n'
 
+ALTER_BODY = """
+DECLARE @tbl sysname, @col sysname, @typ nvarchar(100), @nn bit, @dfn sysname, @df nvarchar(100),
+        @sql nvarchar(max), @have nvarchar(100), @have_nn bit;
+
+DECLARE c CURSOR LOCAL FAST_FORWARD FOR SELECT tbl, col, typ, not_null, df_name, df FROM @spec ORDER BY ord;
+OPEN c;
+FETCH NEXT FROM c INTO @tbl, @col, @typ, @nn, @dfn, @df;
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    SELECT @have = NULL, @have_nn = NULL;
+    SELECT @have = CASE
+               WHEN ty.name IN (N'nvarchar', N'nchar') THEN ty.name + N'(' + IIF(c.max_length = -1, N'max', CAST(c.max_length / 2 AS nvarchar(10))) + N')'
+               WHEN ty.name IN (N'varchar', N'char') THEN ty.name + N'(' + IIF(c.max_length = -1, N'max', CAST(c.max_length AS nvarchar(10))) + N')'
+               WHEN ty.name IN (N'decimal', N'numeric') THEN ty.name + N'(' + CAST(c.precision AS nvarchar(5)) + N',' + CAST(c.scale AS nvarchar(5)) + N')'
+               WHEN ty.name IN (N'datetime2', N'datetimeoffset', N'time') THEN ty.name + N'(' + CAST(c.scale AS nvarchar(5)) + N')'
+               ELSE ty.name END,
+           @have_nn = IIF(c.is_nullable = 1, 0, 1)
+    FROM sys.columns c
+    JOIN sys.types ty ON ty.user_type_id = c.user_type_id
+    WHERE c.object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@tbl)) AND c.name = @col;
+
+    IF @have IS NULL
+    BEGIN
+        SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@tbl) + N' ADD ' + QUOTENAME(@col) + N' ' + @typ + N' NULL'
+                 + ISNULL(N' CONSTRAINT ' + QUOTENAME(@dfn) + N' DEFAULT ' + @df, N'') + N';';
+        EXEC sys.sp_executesql @sql;
+        PRINT N'Added    ' + @tbl + N'.' + @col + N' ' + @typ;
+    END
+    ELSE
+    BEGIN
+        IF @have <> @typ
+            PRINT N'TYPE     ' + @tbl + N'.' + @col + N' is ' + @have + N', spec ' + @typ + N' (not changed)';
+        IF @nn = 1 AND @have_nn = 0
+            PRINT N'NULL     ' + @tbl + N'.' + @col + N' allows NULL, spec NOT NULL (not changed)';
+    END
+    FETCH NEXT FROM c INTO @tbl, @col, @typ, @nn, @dfn, @df;
+END
+CLOSE c;
+DEALLOCATE c;
+
+-- columns in the tables that are not in the spec (kept; check whether they are still needed)
+DECLARE @extra nvarchar(max);
+SELECT @extra = STUFF((
+    SELECT N', ' + t.name + N'.' + c.name
+    FROM sys.tables t
+    JOIN sys.columns c ON c.object_id = t.object_id
+    WHERE t.schema_id = SCHEMA_ID(N'dbo')
+      AND t.name IN (SELECT DISTINCT tbl FROM @spec)
+      AND NOT EXISTS (SELECT 1 FROM @spec s WHERE s.tbl = t.name AND s.col = c.name)
+    ORDER BY t.name, c.column_id
+    FOR XML PATH(''), TYPE).value('.', 'nvarchar(max)'), 1, 2, N'');
+IF @extra IS NOT NULL
+    PRINT N'EXTRA    not in the spec (kept): ' + @extra;
+
+COMMIT TRANSACTION;
+GO"""
+
+
+def alter_script(group):
+    """Brings existing tables in line with the spec without dropping anything: creates a
+    missing child table, adds missing columns, and reports type differences."""
+    tables = [t for t in TABLES if t['group'] == group]
+    what = 'NetSuite master data' if group == 'masterdata' else 'NetSuite vendor bill'
+    rows = []
+    for t in tables:
+        groups = [(t['table'], [], t['columns'])]
+        for ch in t.get('children', []):
+            groups.append((f"{t['table']}_{ch['suffix']}",
+                           [(t['record'] + 'Id', None, None, 'nvarchar(100) NOT NULL', '')], ch['columns']))
+        for table, parent_cols, columns in groups:
+            for name, typ, default in BPA_COLUMNS:
+                rows.append((table, name, typ, default))
+            for name, _f, _p, typ, _n in parent_cols + columns:
+                rows.append((table, name, typ, None))
+    lines = ['/*',
+             f'    Foundation Group - bring the existing {what} staging tables in line with',
+             '    the spec (tools/netsuite_masterdata.py). Safe to run more than once:',
+             '',
+             '    1. Creates a child table that does not exist yet (full definition).',
+             '    2. Adds every column that is missing, as NULL (also the ones that are',
+             '       NOT NULL in the spec: existing rows have no value for them).',
+             '    3. Reports (PRINT), without changing anything: columns whose type differs',
+             '       from the spec, columns that should be NOT NULL, and columns that are not',
+             '       in the spec. Change those by hand after checking the data.',
+             '',
+             '    Tables:']
+    for t in tables:
+        lines.append(f"        dbo.{t['table']}")
+        for ch in t.get('children', []):
+            lines.append(f"        dbo.{t['table']}_{ch['suffix']}")
+    lines += ['',
+              '    The header table must exist (run the CREATE script for a new database).',
+              '    Runs in a single transaction. Generated by',
+              f'    tools/netsuite_masterdata.py sql alter --group {group}; do not edit by hand.',
+              '*/', 'SET XACT_ABORT ON;', 'SET NOCOUNT ON;', 'GO', 'BEGIN TRANSACTION;', '']
+    for t in tables:
+        lines.append(f"IF OBJECT_ID(N'dbo.{t['table']}', N'U') IS NULL")
+        lines.append(f"    THROW 50101, N'dbo.{t['table']} does not exist: run the CREATE script first.', 1;")
+    lines.append('')
+    for t in tables:
+        for ch in t.get('children', []):
+            lines += child_sql(t, ch, 'ifmissing')
+    lines += ['-- the spec: every column with its type',
+              'DECLARE @spec TABLE (tbl sysname, col sysname, typ nvarchar(100), not_null bit, '
+              'df_name sysname NULL, df nvarchar(100) NULL, ord int IDENTITY);',
+              'INSERT INTO @spec (tbl, col, typ, not_null, df_name, df) VALUES']
+    vals = []
+    for table, col_, typ, default in rows:
+        dn = f"N'DF_{table}_{default[0]}'" if default else 'NULL'
+        dv = f"N'{default[1]}'" if default else 'NULL'
+        vals.append(f"    (N'{table}', N'{col_}', N'{typ.replace(' NOT NULL', '')}', "
+                    f"{1 if 'NOT NULL' in typ else 0}, {dn}, {dv})")
+    lines.append(',\n'.join(vals) + ';')
+    return '\n'.join(lines) + '\n' + ALTER_BODY + '\n'
+
+
 # --------------------------------------------------------------------------- validation
 
 
@@ -1227,7 +1344,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='cmd', required=True)
     s = sub.add_parser('sql')
-    s.add_argument('which', choices=['full', 'children'], nargs='?', default='full')
+    s.add_argument('which', choices=['full', 'children', 'alter'], nargs='?', default='full')
     s.add_argument('--group', choices=['masterdata', 'vendorbill'], default='masterdata')
     v = sub.add_parser('validate')
     v.add_argument('--export', help='NetSuite connector BusinessObjects export (REST metadata)')
@@ -1240,7 +1357,7 @@ def main():
     c.add_argument('files', nargs='+')
     args = ap.parse_args()
     if args.cmd == 'sql':
-        sys.stdout.write(sql_script(args.which, args.group))
+        sys.stdout.write(alter_script(args.group) if args.which == 'alter' else sql_script(args.which, args.group))
         return 0
     if args.cmd == 'check-ddl':
         return check_ddl(args)
