@@ -3,8 +3,9 @@
     transaction, one row per paid invoice / vendor bill or one journal entry row.
     usp_Bank_Match_Rabobank skips transactions and documents that are already in here.
 
-    The NetSuite records themselves go to the existing tb_Netsuite_customerPayment /
-    vendorPayment / journalEntry tables (and their child tables).
+    The NetSuite records themselves go to the existing tb_Netsuite_CustomerPayment /
+    VendorPayment / JournalEntry tables (and their child tables); output_entry_id is the
+    BPA_EntryID of the header created there.
 */
 USE [BPAStaging]
 GO
