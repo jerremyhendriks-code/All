@@ -1,12 +1,20 @@
 /*
     Match Rabobank transactions to open NetSuite invoices / vendor bills and stage the
-    NetSuite records to create:
-    - incoming money matched to invoices       -> tb_Netsuite_CustomerPaymentCreate (+ _Apply)
-    - outgoing money matched to vendor bills   -> tb_Netsuite_VendorPaymentCreate   (+ _Apply)
-    - still unmatched after @JournalAfterDays  -> tb_Netsuite_JournalEntryCreate    (+ _Line),
+    NetSuite records to create (BPA_Direction = 'TO', BPA_Origin = 'Matched Transaction'):
+    - incoming money matched to invoices       -> tb_Netsuite_customerPayment (+ _apply)
+    - outgoing money matched to vendor bills   -> tb_Netsuite_vendorPayment   (+ _apply)
+    - still unmatched after @JournalAfterDays  -> tb_Netsuite_journalEntry    (+ _line),
                                                   bank account vs. suspense account
+    Lines point to their header through BPA_ParentID = header BPA_EntryID.
+
+    !! Child table and column names below are placeholders until checked against the DDL:
+       header   external_id, customer_id / vendor_id, subsidiary_id, account_id, currency_id,
+                tran_date, payment_amount, memo         (journalEntry: no customer/vendor/account/amount)
+       _apply   invoice_id + invoice_number / vendor_bill_id + vendor_bill_number, amount
+       _line    line_no, account_id, debit, credit, memo
+
     Every handled transaction gets rows in tb_Bank_TransactionMatch and is skipped on later runs.
-    Requires create_bank_matching_tables.sql and alter_tb_Bank_Bankaccounts_add_netsuite_columns.sql.
+    Requires create_tb_Bank_TransactionMatch.sql and alter_tb_Bank_Bankaccounts_add_netsuite_columns.sql.
 
     Bank transactions
     - Only accounts in tb_Bank_Bankaccounts with subsidiary, bank GL account and currency filled.
@@ -43,6 +51,8 @@ BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
 
+    DECLARE @direction nvarchar(50) = N'TO',
+            @origin    nvarchar(50) = N'Matched Transaction';
     DECLARE @journal_until date = DATEADD(day, -@JournalAfterDays, CAST(GETDATE() AS date));
 
     -- 1. Bank transactions not handled yet
@@ -194,51 +204,51 @@ BEGIN
     FROM   #je j;
 
     -- Customer payments
-    INSERT INTO dbo.tb_Netsuite_CustomerPaymentCreate
-           (BPA_EntryID, BPA_Origin, BPA_Company, external_id, customer_id, subsidiary_id,
+    INSERT INTO dbo.tb_Netsuite_customerPayment
+           (BPA_EntryID, BPA_Direction, BPA_Origin, BPA_Company, external_id, customer_id, subsidiary_id,
             account_id, currency_id, tran_date, payment_amount, memo)
-    SELECT header_id, N'Rabobank', company, CONCAT(N'RABO-', bank_iban, N'-', entry_reference), entity_id, subsidiary_id,
+    SELECT header_id, @direction, @origin, company, CONCAT(N'RABO-', bank_iban, N'-', entry_reference), entity_id, subsidiary_id,
            account_id, currency_id, booking_date, amount, memo
     FROM   #pay
     WHERE  match_type = 'CUSTOMERPAYMENT';
 
-    INSERT INTO dbo.tb_Netsuite_CustomerPaymentCreate_Apply
-           (BPA_ParentID, BPA_Origin, BPA_Company, invoice_id, invoice_number, amount)
-    SELECT p.header_id, N'Rabobank', p.company, m.doc_id, m.doc_number, m.amount_open
+    INSERT INTO dbo.tb_Netsuite_customerPayment_apply
+           (BPA_ParentID, BPA_Direction, BPA_Origin, BPA_Company, invoice_id, invoice_number, amount)
+    SELECT p.header_id, @direction, @origin, p.company, m.doc_id, m.doc_number, m.amount_open
     FROM   #match m
     JOIN   #pay p ON p.bank_iban = m.bank_iban AND p.entry_reference = m.entry_reference
     WHERE  m.match_type = 'CUSTOMERPAYMENT';
 
     -- Vendor payments (bank amount is negative, payment amount positive)
-    INSERT INTO dbo.tb_Netsuite_VendorPaymentCreate
-           (BPA_EntryID, BPA_Origin, BPA_Company, external_id, vendor_id, subsidiary_id,
+    INSERT INTO dbo.tb_Netsuite_vendorPayment
+           (BPA_EntryID, BPA_Direction, BPA_Origin, BPA_Company, external_id, vendor_id, subsidiary_id,
             account_id, currency_id, tran_date, payment_amount, memo)
-    SELECT header_id, N'Rabobank', company, CONCAT(N'RABO-', bank_iban, N'-', entry_reference), entity_id, subsidiary_id,
+    SELECT header_id, @direction, @origin, company, CONCAT(N'RABO-', bank_iban, N'-', entry_reference), entity_id, subsidiary_id,
            account_id, currency_id, booking_date, -amount, memo
     FROM   #pay
     WHERE  match_type = 'VENDORPAYMENT';
 
-    INSERT INTO dbo.tb_Netsuite_VendorPaymentCreate_Apply
-           (BPA_ParentID, BPA_Origin, BPA_Company, vendor_bill_id, vendor_bill_number, amount)
-    SELECT p.header_id, N'Rabobank', p.company, m.doc_id, m.doc_number, m.amount_open
+    INSERT INTO dbo.tb_Netsuite_vendorPayment_apply
+           (BPA_ParentID, BPA_Direction, BPA_Origin, BPA_Company, vendor_bill_id, vendor_bill_number, amount)
+    SELECT p.header_id, @direction, @origin, p.company, m.doc_id, m.doc_number, m.amount_open
     FROM   #match m
     JOIN   #pay p ON p.bank_iban = m.bank_iban AND p.entry_reference = m.entry_reference
     WHERE  m.match_type = 'VENDORPAYMENT';
 
     -- Journal entries: money in = debit bank / credit suspense, money out = the reverse
-    INSERT INTO dbo.tb_Netsuite_JournalEntryCreate
-           (BPA_EntryID, BPA_Origin, BPA_Company, external_id, subsidiary_id, currency_id, tran_date, memo)
-    SELECT header_id, N'Rabobank', company, CONCAT(N'RABO-', bank_iban, N'-', entry_reference), subsidiary_id,
+    INSERT INTO dbo.tb_Netsuite_journalEntry
+           (BPA_EntryID, BPA_Direction, BPA_Origin, BPA_Company, external_id, subsidiary_id, currency_id, tran_date, memo)
+    SELECT header_id, @direction, @origin, company, CONCAT(N'RABO-', bank_iban, N'-', entry_reference), subsidiary_id,
            currency_id, booking_date, memo
     FROM   #je;
 
-    INSERT INTO dbo.tb_Netsuite_JournalEntryCreate_Line
-           (BPA_ParentID, BPA_Origin, BPA_Company, line_no, account_id, debit, credit, memo)
-    SELECT header_id, N'Rabobank', company, 1, account_id,
+    INSERT INTO dbo.tb_Netsuite_journalEntry_line
+           (BPA_ParentID, BPA_Direction, BPA_Origin, BPA_Company, line_no, account_id, debit, credit, memo)
+    SELECT header_id, @direction, @origin, company, 1, account_id,
            CASE WHEN amount > 0 THEN amount END, CASE WHEN amount < 0 THEN -amount END, memo
     FROM   #je
     UNION ALL
-    SELECT header_id, N'Rabobank', company, 2, suspense_account_id,
+    SELECT header_id, @direction, @origin, company, 2, suspense_account_id,
            CASE WHEN amount < 0 THEN -amount END, CASE WHEN amount > 0 THEN amount END, memo
     FROM   #je;
 
