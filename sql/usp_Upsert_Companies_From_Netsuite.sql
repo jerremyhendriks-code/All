@@ -23,6 +23,12 @@
 USE [BPAStaging];
 GO
 
+-- Required for writing to tables with filtered indexes
+SET ANSI_NULLS ON;
+GO
+SET QUOTED_IDENTIFIER ON;
+GO
+
 CREATE OR ALTER PROCEDURE dbo.usp_Upsert_Companies_From_Netsuite
 AS
 BEGIN
