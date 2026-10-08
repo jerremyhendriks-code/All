@@ -5,12 +5,12 @@
   so filtering on that would exclude genuinely open bills).
   No amount_open > 0 filter: this is an incremental load, so paid bills must come
   through with amount_open = 0 to replace their earlier (open) row in staging.
-  Column aliases are kept as they were (invoice_* / customer_*) so the existing
-  staging table mapping keeps working; on this query customer_* is the vendor.
+  vendor_bill_id / vendor_bill_number / vendor_id / vendor_name match the
+  columns in tb_Netsuite_VendorBill.
   vendor_iban / vendor_bank_account_*: Global Bank Details (ILGB) on the bill.
 -->
 <query>
-<q>SELECT t.id AS invoice_id, t.tranid AS invoice_number, t.otherrefnum AS customer_po_number, TO_CHAR(t.trandate, 'YYYY-MM-DD') AS invoice_date, TO_CHAR(t.duedate, 'YYYY-MM-DD') AS due_date, t.entity AS customer_id, BUILTIN.DF(t.entity) AS customer_name, t.custbody_il_gb_iban AS vendor_iban, t.custbody_il_gb_bank_acc_num AS vendor_bank_account_number, t.custbody_il_gb_bank_acc_name AS vendor_bank_account_name, t.memo AS memo, t.foreigntotal AS invoice_total, t.foreignamountunpaid AS amount_open, t.currency AS currency_id, BUILTIN.DF(t.currency) AS currency_name, tl.subsidiary AS subsidiary_id, BUILTIN.DF(tl.subsidiary) AS subsidiary_name, t.postingperiod AS posting_period_id, BUILTIN.DF(t.postingperiod) AS posting_period_name, t.status AS status_code, BUILTIN.DF(t.status) AS status_name, TO_CHAR(t.lastmodifieddate, 'YYYY-MM-DD HH24:MI:SS') AS last_modified FROM transaction t JOIN transactionLine tl ON tl.transaction = t.id AND tl.mainline = 'T' WHERE t.recordtype = 'vendorbill' AND t.lastmodifieddate > TO_DATE('$LastModifiedDate$', 'YYYY-MM-DD HH24:MI:SS') ORDER BY t.id</q>
+<q>SELECT t.id AS vendor_bill_id, t.tranid AS vendor_bill_number, t.otherrefnum AS customer_po_number, TO_CHAR(t.trandate, 'YYYY-MM-DD') AS invoice_date, TO_CHAR(t.duedate, 'YYYY-MM-DD') AS due_date, t.entity AS vendor_id, BUILTIN.DF(t.entity) AS vendor_name, t.custbody_il_gb_iban AS vendor_iban, t.custbody_il_gb_bank_acc_num AS vendor_bank_account_number, t.custbody_il_gb_bank_acc_name AS vendor_bank_account_name, t.memo AS memo, t.foreigntotal AS invoice_total, t.foreignamountunpaid AS amount_open, t.currency AS currency_id, BUILTIN.DF(t.currency) AS currency_name, tl.subsidiary AS subsidiary_id, BUILTIN.DF(tl.subsidiary) AS subsidiary_name, t.postingperiod AS posting_period_id, BUILTIN.DF(t.postingperiod) AS posting_period_name, t.status AS status_code, BUILTIN.DF(t.status) AS status_name, TO_CHAR(t.lastmodifieddate, 'YYYY-MM-DD HH24:MI:SS') AS last_modified FROM transaction t JOIN transactionLine tl ON tl.transaction = t.id AND tl.mainline = 'T' WHERE t.recordtype = 'vendorbill' AND t.lastmodifieddate > TO_DATE('$LastModifiedDate$', 'YYYY-MM-DD HH24:MI:SS') ORDER BY t.id</q>
   <limit>1000</limit>
   <offset>0</offset>
 </query>
