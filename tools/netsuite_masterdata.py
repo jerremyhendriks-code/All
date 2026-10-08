@@ -360,7 +360,7 @@ MASTERDATA = [
     },
 ]
 
-# vendorBill: header + expense / item lines + GL impact changes
+# vendorBill: header + expense / item lines
 FEATURE = 'depends on an account feature; exists in the FG record, not in the Ellomay definitions'
 VENDORBILL = [
     {
@@ -481,22 +481,6 @@ VENDORBILL = [
                     col('amortizStartDate', 'date'),
                     col('amortizationEndDate', 'date'),
                     col('amortizationResidual', 'nvarchar(100)'),
-                ],
-            },
-            {
-                'suffix': 'GLImpactChanges', 'field': 'glImpactChanges', 'kind': 'lines',
-                'index': 'transactionKey', 'bod_machine': 'glimpactchanges',
-                'evidence': 'FG BOD only (glimpactchanges sublist: field names, no lines). Not part '
-                            'of the REST vendorBill record, so the NetSuite connector does not '
-                            'return it; column names are the BOD names in camelCase.',
-                'columns': [
-                    col('creationDate', 'datetime2(0)', 'when the GL impact was changed'),
-                    col('transactionDate', 'date'),
-                    col('transactionType', 'nvarchar(100)'),
-                    col('transactionKey', 'nvarchar(100)'),
-                    col('transactionNumber', 'nvarchar(100)'),
-                    col('transactionUrl', 'nvarchar(1000)'),
-                    *ref('changedBy', 'employee'),
                 ],
             },
         ],

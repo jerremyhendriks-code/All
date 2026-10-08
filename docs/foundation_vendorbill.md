@@ -1,13 +1,13 @@
 # Foundation Group: vendorBill FROM task (NetSuite to staging)
 
-This page covers reading vendor bills from Foundation Group's NetSuite with the TaskCentre NetSuite connector (REST record service, `vendorBill` › **Search**). The header goes into `dbo.tb_Netsuite_VendorBill`, the expense lines into `dbo.tb_Netsuite_VendorBill_Expense` and the item lines into `dbo.tb_Netsuite_VendorBill_Item`. `dbo.tb_Netsuite_VendorBill_GLImpactChanges` is also defined, but the connector can't fill it (see below).
+This page covers reading vendor bills from Foundation Group's NetSuite with the TaskCentre NetSuite connector (REST record service, `vendorBill` › **Search**). The header goes into `dbo.tb_Netsuite_VendorBill`, the expense lines into `dbo.tb_Netsuite_VendorBill_Expense` and the item lines into `dbo.tb_Netsuite_VendorBill_Item`.
 
 | File | What |
 |---|---|
 | `netsuite/foundation/vendorBill_BOD_example.xml` | Example bill from the FG sandbox (record XML), the basis for this design |
 | `netsuite/foundation/NetSuiteConnector_vendorBill_Foundation.xml` | Connector object design (`NetSuiteCatalogObj` vendorBill) |
-| `sql/foundation/create_tb_Netsuite_VendorBill.sql` | All four tables: header, Expense, Item, GLImpactChanges. Renames existing tables to `_bak` first. |
-| `sql/foundation/create_tb_Netsuite_VendorBill_children.sql` | Only the three child tables; a table that already exists is skipped |
+| `sql/foundation/create_tb_Netsuite_VendorBill.sql` | All three tables: header, Expense, Item. Renames existing tables to `_bak` first. |
+| `sql/foundation/create_tb_Netsuite_VendorBill_children.sql` | Only the two child tables; a table that already exists is skipped |
 | `docs/foundation_vendorbill_validation.md` | Validation report, column by column |
 | `tools/build_foundation_vendorbill_object.py` | Regenerates the connector object from the Ellomay export |
 | `tools/netsuite_masterdata.py` | Table spec, SQL generation and validation (`--group vendorbill`) |
@@ -42,11 +42,9 @@ vendorBill
 
 The four custom line fields (`cseg_investment_cat`, `custcol_far_trn_relatedasset`, `custcol_nl_wkr_category`, `custcol_nondeductible_account`) are selected in the connector but **not stored** yet. They exist in the FG record, but no metadata confirms their REST type, and the example line has no value. Add them to the Expense table after the metadata-catalog check.
 
-### GL impact changes
+### GL impact
 
-The `glimpactchanges` sublist in the BOD (creation date, transaction date / type / key / number / URL, changed by) is a screen list. It isn't part of the REST `vendorBill` record, so the NetSuite connector can't return it, and none of its 8 columns can be confirmed. The table uses the BOD names in camelCase. Before loading it, find a source: look in Setup › Records Catalog for a record or SuiteQL table with these fields, or use a saved search.
-
-If what you need is the **GL impact itself** (debit and credit per account, per accounting book), that's a different table: SuiteQL `transactionaccountingline`. The `suiteql/vendorbill_lines.sql` query on branch `claude/laughing-hamilton-4eyfc8` already reads it.
+The BOD's `glimpactchanges` sublist is a screen list, not record data, so it isn't stored. If what you need is the **GL impact itself** (debit and credit per account, per accounting book), that's a different table: SuiteQL `transactionaccountingline`. The `suiteql/vendorbill_lines.sql` query on branch `claude/laughing-hamilton-4eyfc8` already reads it.
 
 ### Importing the object
 

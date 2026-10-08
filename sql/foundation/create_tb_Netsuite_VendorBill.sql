@@ -6,7 +6,6 @@
     dbo.tb_Netsuite_VendorBill                vendorBill
     dbo.tb_Netsuite_VendorBill_Expense        vendorBill/expense/items
     dbo.tb_Netsuite_VendorBill_Item           vendorBill/item/items
-    dbo.tb_Netsuite_VendorBill_GLImpactChangesvendorBill/glImpactChanges/items
 
     Column names are the NetSuite REST field names. A reference field is stored
     as <field>Id + <field>RefName (the values on the record itself; the
@@ -307,51 +306,6 @@ CREATE TABLE dbo.tb_Netsuite_VendorBill_Item (
 CREATE NONCLUSTERED INDEX IX_tb_Netsuite_VendorBill_Item_BPA_ParentID ON dbo.tb_Netsuite_VendorBill_Item (BPA_ParentID);
 CREATE NONCLUSTERED INDEX IX_tb_Netsuite_VendorBill_Item_vendorBillId ON dbo.tb_Netsuite_VendorBill_Item (vendorBillId, line);
 PRINT N'Created  dbo.tb_Netsuite_VendorBill_Item';
-
--- vendorBill/glImpactChanges/items -> dbo.tb_Netsuite_VendorBill_GLImpactChanges: one row per line
-EXEC #rebuild N'tb_Netsuite_VendorBill_GLImpactChanges';
-CREATE TABLE dbo.tb_Netsuite_VendorBill_GLImpactChanges (
-    -- BPA control fields (standard block, same as the other tb_Netsuite_* tables)
-    BPA_Origin                  nvarchar(50) NULL,
-    BPA_Direction               nvarchar(50) NULL,
-    BPA_Company                 nvarchar(50) NULL,
-    BPA_EntryID                 uniqueidentifier NOT NULL CONSTRAINT DF_tb_Netsuite_VendorBill_GLImpactChanges_EntryID DEFAULT (newsequentialid()),
-    BPA_ParentID                uniqueidentifier NULL,
-    BPA_Status                  int NULL CONSTRAINT DF_tb_Netsuite_VendorBill_GLImpactChanges_Status DEFAULT ((0)),
-    BPA_Reference               nvarchar(50) NULL,
-    BPA_Reference_Description   nvarchar(100) NULL,
-    BPA_Reference2              nvarchar(50) NULL,
-    BPA_Reference2_Description  nvarchar(100) NULL,
-    BPA_Action                  nvarchar(1) NULL,
-    BPA_ReturnedID              nvarchar(50) NULL,
-    BPA_Syscreated              datetime NULL CONSTRAINT DF_tb_Netsuite_VendorBill_GLImpactChanges_Syscreated DEFAULT (getdate()),
-    BPA_Sysmodified             datetime NULL CONSTRAINT DF_tb_Netsuite_VendorBill_GLImpactChanges_Sysmodified DEFAULT (getdate()),
-    BPA_Syscreator              nvarchar(50) NULL,
-    BPA_Error                   nvarchar(max) NULL,
-    BPA_Error_Extended          nvarchar(max) NULL,
-    BPA_Description             nvarchar(255) NULL,
-    BPA_Failcount               int NULL CONSTRAINT DF_tb_Netsuite_VendorBill_GLImpactChanges_Failcount DEFAULT ((0)),
-    BPA_Orig_Entryid            uniqueidentifier NULL,
-    BPA_TaskInstanceID          int NULL,
-    BPA_TaskID                  int NULL,
-
-    -- Parent: BPA_ParentID = tb_Netsuite_VendorBill.BPA_EntryID
-    vendorBillId                nvarchar(100) NOT NULL,     -- vendorBill/id (the parent's NetSuite id)
-
-    -- NetSuite fields (REST names; a reference is <field>Id + <field>RefName)
-    creationDate                datetime2(0) NULL,          -- when the GL impact was changed
-    transactionDate             date NULL,
-    transactionType             nvarchar(100) NULL,
-    transactionKey              nvarchar(100) NULL,
-    transactionNumber           nvarchar(100) NULL,
-    transactionUrl              nvarchar(1000) NULL,
-    changedById                 nvarchar(100) NULL,         -- employee
-    changedByRefName            nvarchar(400) NULL,
-    CONSTRAINT PK_tb_Netsuite_VendorBill_GLImpactChanges PRIMARY KEY CLUSTERED (BPA_EntryID)
-);
-CREATE NONCLUSTERED INDEX IX_tb_Netsuite_VendorBill_GLImpactChanges_BPA_ParentID ON dbo.tb_Netsuite_VendorBill_GLImpactChanges (BPA_ParentID);
-CREATE NONCLUSTERED INDEX IX_tb_Netsuite_VendorBill_GLImpactChanges_vendorBillId ON dbo.tb_Netsuite_VendorBill_GLImpactChanges (vendorBillId, transactionKey);
-PRINT N'Created  dbo.tb_Netsuite_VendorBill_GLImpactChanges';
 
 COMMIT TRANSACTION;
 GO
