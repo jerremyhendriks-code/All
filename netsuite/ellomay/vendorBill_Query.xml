@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Open customer invoices (no posting-period filter - an invoice's postingperiod is
+  the period it was originally entered in, not the period it's being paid in,
+  so filtering on that would exclude genuinely open invoices).
+  status_code / status_name are returned so you can check whether the
+  amount_open > 0 records are genuinely open, or whether old balances are a
+  data quality issue rather than a query issue.
+-->
+<query>
+<q>SELECT t.id AS invoice_id, t.tranid AS invoice_number, t.otherrefnum AS customer_po_number, TO_CHAR(t.trandate, 'YYYY-MM-DD') AS invoice_date, TO_CHAR(t.duedate, 'YYYY-MM-DD') AS due_date, t.entity AS customer_id, BUILTIN.DF(t.entity) AS customer_name, t.memo AS memo, t.foreigntotal AS invoice_total, t.foreignamountunpaid AS amount_open, t.currency AS currency_id, BUILTIN.DF(t.currency) AS currency_name, tl.subsidiary AS subsidiary_id, BUILTIN.DF(tl.subsidiary) AS subsidiary_name, t.postingperiod AS posting_period_id, BUILTIN.DF(t.postingperiod) AS posting_period_name, t.status AS status_code, BUILTIN.DF(t.status) AS status_name, TO_CHAR(t.lastmodifieddate, 'YYYY-MM-DD HH24:MI:SS') AS last_modified FROM transaction t JOIN transactionLine tl ON tl.transaction = t.id AND tl.mainline = 'T' WHERE t.recordtype = 'invoice' AND t.lastmodifieddate > TO_DATE('$LastModifiedDate$', 'YYYY-MM-DD HH24:MI:SS')  AND t.foreignamountunpaid > 0 ORDER BY t.id</q>
+  <limit>1000</limit>
+  <offset>0</offset>
+</query>
