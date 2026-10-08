@@ -11,12 +11,16 @@ USE [BPAStaging];
 GO
 
 /*
-    Rabobank transactions not handled yet, with the NetSuite settings of our bank account.
-    - Only accounts in tb_Bank_Bankaccounts with subsidiary, bank GL account and currency filled.
-      Our account is the debtor or creditor IBAN that is in tb_Bank_Bankaccounts
-      (creditor side for money in, debtor side for money out).
-    - A transaction is identified by our IBAN + entryReference; when it was fetched more than
-      once, the most recently loaded row is used.
+    Rabobank transactions not handled yet, with the NetSuite values they need:
+    - bank_iban       Our account: the creditor (money in) or debtor (money out) IBAN that is in
+                      tb_Bank_Bankaccounts.
+    - subsidiary_id   tb_Bank_Bankaccounts.BPA_Connection -> tb_Companies.BPA_Company_BPAConnection.
+    - currency_id     transactionAmount_currency -> tb_Netsuite_Currency.symbol.
+    - account_id      Active NetSuite account of type Bank whose number, name or description
+                      contains the IBAN (spaces ignored).
+    mapping_issue says what is missing; such transactions are not matched or journaled.
+    A transaction is identified by our IBAN + entryReference; when it was fetched more than
+    once, the most recently loaded row is used.
 */
 CREATE OR ALTER VIEW dbo.vw_Bank_OpenTransaction
 AS
@@ -28,13 +32,18 @@ SELECT t.bank_entry_id,
        t.amount,
        t.search_text,
        LEFT(t.memo, 4000) AS memo,
-       t.subsidiary_id,
-       t.account_id,
-       t.currency_id,
-       t.suspense_account_id,
-       co.BPA_Company AS company
+       co.subsidiary_ID AS subsidiary_id,
+       acc.id AS account_id,
+       cur.id AS currency_id,
+       co.BPA_Company AS company,
+       CASE WHEN co.subsidiary_ID IS NULL THEN CONCAT('No subsidiary in tb_Companies for BPA_Connection ', t.bpa_connection)
+            WHEN cur.id IS NULL           THEN CONCAT('No NetSuite currency for ', t.currency_code)
+            WHEN acc.id IS NULL           THEN CONCAT('No NetSuite bank account for IBAN ', t.bank_iban)
+       END AS mapping_issue
 FROM  (SELECT r.BPA_EntryID AS bank_entry_id,
               b.iban AS bank_iban,
+              b.BPA_Connection AS bpa_connection,
+              r.transactionAmount_currency AS currency_code,
               CAST(COALESCE(r.entryReference, CONVERT(varchar(36), r.BPA_EntryID)) AS varchar(100)) AS entry_reference,
               CAST(COALESCE(r.bookingDate, r.valueDate) AS date) AS booking_date,
               CAST(ROUND(r.transactionAmount_value, 2) AS decimal(18, 2)) AS amount,
@@ -43,16 +52,10 @@ FROM  (SELECT r.BPA_EntryID AS bank_entry_id,
               STUFF(CONCAT(N' - ' + CASE WHEN r.transactionAmount_value > 0 THEN r.debtorName ELSE r.creditorName END,
                            N' - ' + r.remittanceInformationUnstructured,
                            N' - ' + r.remittanceInformationStructured), 1, 3, N'') AS memo,
-              b.netsuite_subsidiary_id AS subsidiary_id,
-              b.netsuite_account_id AS account_id,
-              b.netsuite_currency_id AS currency_id,
-              b.netsuite_suspense_account_id AS suspense_account_id,
               ROW_NUMBER() OVER (PARTITION BY b.iban, COALESCE(r.entryReference, CONVERT(varchar(36), r.BPA_EntryID))
                                  ORDER BY r.BPA_Syscreated DESC, r.BPA_EntryID DESC) AS rn
        FROM   dbo.tb_Rabobank_Transaction r
-       CROSS APPLY (SELECT TOP (1) UPPER(REPLACE(ba.IBAN, ' ', '')) AS iban,
-                           ba.netsuite_subsidiary_id, ba.netsuite_account_id,
-                           ba.netsuite_currency_id, ba.netsuite_suspense_account_id
+       CROSS APPLY (SELECT TOP (1) UPPER(REPLACE(ba.IBAN, ' ', '')) AS iban, ba.BPA_Connection
                     FROM   dbo.tb_Bank_Bankaccounts ba
                     WHERE  UPPER(REPLACE(ba.IBAN, ' ', '')) IN (UPPER(REPLACE(r.creditorAccount_iban, ' ', '')),
                                                                 UPPER(REPLACE(r.debtorAccount_iban, ' ', '')))
@@ -61,11 +64,24 @@ FROM  (SELECT r.BPA_EntryID AS bank_entry_id,
                                                           THEN r.creditorAccount_iban
                                                           ELSE r.debtorAccount_iban END, ' ', ''))
                                   THEN 0 ELSE 1 END) b
-       WHERE  r.transactionAmount_value <> 0
-         AND  b.netsuite_subsidiary_id IS NOT NULL
-         AND  b.netsuite_account_id IS NOT NULL
-         AND  b.netsuite_currency_id IS NOT NULL) t
-LEFT JOIN dbo.tb_Companies co ON co.subsidiary_ID = t.subsidiary_id
+       WHERE  r.transactionAmount_value <> 0) t
+OUTER APPLY (SELECT TOP (1) c.subsidiary_ID, c.BPA_Company
+             FROM   dbo.tb_Companies c
+             WHERE  c.BPA_Company_BPAConnection = t.bpa_connection
+               AND  c.subsidiary_ID IS NOT NULL
+             ORDER BY c.BPA_Sysmodified DESC) co
+OUTER APPLY (SELECT TOP (1) c.id
+             FROM   dbo.tb_Netsuite_Currency c
+             WHERE  c.symbol = t.currency_code
+               AND  ISNULL(c.isInactive, 0) = 0
+             ORDER BY c.BPA_Syscreated DESC) cur
+OUTER APPLY (SELECT TOP (1) a.id
+             FROM   dbo.tb_Netsuite_Account a
+             WHERE  a.acctTypeId = N'Bank'
+               AND  ISNULL(a.isInactive, 0) = 0
+               AND  UPPER(REPLACE(CONCAT(a.acctNumber, N'|', a.acctName, N'|', a.description), N' ', N''))
+                    LIKE N'%' + t.bank_iban + N'%'
+             ORDER BY a.BPA_Syscreated DESC) acc
 WHERE t.rn = 1
   AND NOT EXISTS (SELECT 1 FROM dbo.tb_Bank_TransactionMatch m
                   WHERE m.bank_iban = t.bank_iban AND m.entry_reference = t.entry_reference);
@@ -130,7 +146,8 @@ WITH candidate AS (
            ON  o.match_type    = CASE WHEN t.amount > 0 THEN 'CUSTOMERPAYMENT' ELSE 'VENDORPAYMENT' END
            AND o.subsidiary_id = t.subsidiary_id
            AND o.currency_id   = t.currency_id
-    WHERE  LEN(o.doc_number) >= 4
+    WHERE  t.mapping_issue IS NULL
+      AND  LEN(o.doc_number) >= 4
       AND  t.search_text LIKE N'%[^0-9A-Z]'
                               + REPLACE(REPLACE(REPLACE(UPPER(o.doc_number), N'[', N'[[]'), N'_', N'[_]'), N'%', N'[%]')
                               + N'[^0-9A-Z]%'

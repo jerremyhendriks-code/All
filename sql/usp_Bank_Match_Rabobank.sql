@@ -4,7 +4,7 @@
     - incoming money matched to invoices       -> tb_Netsuite_CustomerPayment (+ _Apply)
     - outgoing money matched to vendor bills   -> tb_Netsuite_VendorPayment   (+ _Apply)
     - still unmatched after @JournalAfterDays  -> tb_Netsuite_JournalEntry    (+ _Line),
-                                                  bank account vs. suspense account
+                                                  bank account vs. @SuspenseAccountNumber
     Afterwards every handled transaction is logged in tb_Bank_TransactionMatch, so it
     (and the documents it paid) drops out of the views on the next run.
 
@@ -25,7 +25,8 @@ SET QUOTED_IDENTIFIER ON;
 GO
 
 CREATE OR ALTER PROCEDURE dbo.usp_Bank_Match_Rabobank
-    @JournalAfterDays int = 5
+    @SuspenseAccountNumber nvarchar(255),   -- NetSuite acctNumber of the suspense account
+    @JournalAfterDays      int = 5
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -33,7 +34,16 @@ BEGIN
 
     DECLARE @direction     nvarchar(50) = N'TO',
             @origin        nvarchar(50) = N'Matched Transaction',
-            @journal_until date         = DATEADD(day, -@JournalAfterDays, CAST(GETDATE() AS date));
+            @journal_until date         = DATEADD(day, -@JournalAfterDays, CAST(GETDATE() AS date)),
+            @suspense_account_id nvarchar(100);
+
+    SELECT TOP (1) @suspense_account_id = id
+    FROM   dbo.tb_Netsuite_Account
+    WHERE  acctNumber = @SuspenseAccountNumber
+    ORDER BY BPA_Syscreated DESC;
+
+    IF @suspense_account_id IS NULL
+        THROW 50001, 'Suspense account not found in tb_Netsuite_Account (acctNumber = @SuspenseAccountNumber).', 1;
 
     BEGIN TRANSACTION;
 
@@ -76,7 +86,7 @@ BEGIN
     SELECT @direction, @origin, t.company, N'', t.external_id, t.subsidiary_id, t.currency_id, t.booking_date, t.memo
     FROM   dbo.vw_Bank_OpenTransaction t
     WHERE  t.booking_date <= @journal_until
-      AND  t.suspense_account_id IS NOT NULL
+      AND  t.mapping_issue IS NULL
       AND  NOT EXISTS (SELECT 1 FROM dbo.vw_Bank_MatchProposal p WHERE p.external_id = t.external_id);
 
     INSERT INTO dbo.tb_Netsuite_JournalEntry_Line
@@ -86,7 +96,7 @@ BEGIN
     JOIN   dbo.tb_Netsuite_JournalEntry h ON h.externalId = t.external_id AND h.BPA_Origin = @origin
     CROSS APPLY (VALUES (1, t.account_id,
                          CASE WHEN t.amount > 0 THEN t.amount END, CASE WHEN t.amount < 0 THEN -t.amount END),
-                        (2, t.suspense_account_id,
+                        (2, @suspense_account_id,
                          CASE WHEN t.amount < 0 THEN -t.amount END, CASE WHEN t.amount > 0 THEN t.amount END)
                 ) l (line, account_id, debit, credit);
 
