@@ -1,0 +1,152 @@
+<!--
+    Foundation Group - example vendor bill (NetSuite record XML, sandbox 1226620_SB1),
+    as provided for the vendorBill FROM task design. _csrf (a session token) removed,
+    '&' in entryformquerystring escaped so the file is well-formed.
+    Field names here are the NetSuite UI/record names (lowercase); the connector and the
+    staging tables use the REST names: see docs/foundation_vendorbill.md.
+-->
+<nsResponse>
+<record recordType="vendorbill" id="4864" perm="4" fields="_eml_nkey_,_multibtnstate_,selectedtab,nsapiPI,nsapiSR,nsapiVF,nsapiFC,nsapiPS,nsapiVI,nsapiVD,nsapiPD,nsapiVL,nsapiRC,nsapiLI,nsapiLC,nsapiCT,nsbrowserenv,wfPI,wfSR,wfVF,wfFC,wfPS,type,id,externalid,whence,customwhence,entryformquerystring,_csrf,documentstatus,cancelvendbill,wfinstances,dbstrantype,bulk,createddate,lastmodifieddate,periodclosed,allownonglchanges,taxperiod,version,voided,linked,voidblockedbylinks,linkedrevrecje,linkedclosedperioddiscounts,entityname,trantypepermcheck,ntype,deletionreason,deletionreasonmemo,nluser,nlrole,nldept,nlloc,nlsub,baserecordtype,nlapiCC,nexus,warnnexuschange,nexus_country,entitynexus,extraurlparams,taxamountoverride,taxamount2override,payments,origtotal,nextaccountdocnum,payablesacct,companyid,prevdate,ppsetbyuser,ppsetbyuservalue,pp_s,pp_e,entityfieldname,currencyname,currencysymbol,currencyprecision,isbasecurrency,origexchangerate,origcurrency,representssubsidiary,expacct,expacctname,vendortaxitem,grosstotal,edition,custbody_establishment_code,custbody_str_incoterm,custbody_str_transport_mode,custbody_str_notc,custbody_str_region_of_destination,custbody_str_region_of_origin,custbody_str_statistical_proc,custbody_emea_country_of_origin,custbody_11187_pref_entity_bank,custbody_15529_vendor_entity_bank,custbody_4599_mx_operation_type,entity,trandate,creditlimit,tranid,subsidiary,memo,account,postingperiod,duedate,total,usertotal,paymenthold,availablevendorcredit,vatregnum,taxtotal,discountamount,discountdate,department,class,location,cseg_bit_4weeks,currency,exchangerate,transactionnumber,approvalstatus,intercotransaction,intercostatus,excludefromglnumbering,custbody_9997_is_for_ep_eft,custbody_11724_pay_bank_fees,custbody_4599_sg_import_permit_num,custbody_document_date,custbody_my_import_declaration_num,custbody_bit_zonalurl,custbody_atlas_no_hdn,custbody_str_nexuscountry,custbody_itr_nexus,custbody_emea_transaction_type,custbody_atlas_yes_hdn,custbody_sourcesystem,custbody_urltoacquireorder,cseg_investment_cat,custbody_country_of_origin,custbody_report_timestamp,custbody_regime_code,custbody_transaction_region,custbody_nexus_notc,custpage_delivery_terms,custbody_delivery_terms,custbody_notc,custbody_nondeductible_ref_genjrnl,custbody_nondeductible_processed,custbody_mode_of_transport,custbody_regime_code_of_supply,custbody_cash_register,custbody_date_of_taxable_supply,custbody_refno_originvoice,custbody_counterparty_vat,custbody_sii_code,custbody_sii_received_inv_type,custbody_doc_num_summ_invoice,custbody_sii_spcl_scheme_code_purchase,custbody_sii_intra_txn_type,custbody_sii_orig_bill,custbody_sii_external_reference,custbody_sii_correction_type,custbody_sii_operation_date,custbody_sii_invoice_date,custbody_sii_accounting_date,custbody_sii_article_72_73,custbody_sii_not_reported_in_time,custbody_sii_registration_status,custbody_sii_registration_code,custbody_sii_registration_msg,custbody_stc_daysuntilexpiry,custbody_stc_payment_transaction_id,custbody_stc_discountpercent,billaddress,terms,incoterm,custbody_stc_amount_after_discount,custbody_stc_tax_after_discount,custbody_stc_total_after_discount,billattention,billaddressee,billphone,billaddr1,billaddr2,billaddr3,billcity,billstate,billzip,billcountry,billoverride,billingaddress_key,billingaddress,status,statusRef,received,transactionnumber,initialtranid,initialentity,locationsrequired,duedays,discdays,mindays,discpct,datedriven,balance,creditlimit_origtotal,isinstallment,installmentcount,tobeprinted,custpage_itr_nexus,custpage_cs_msgs,custpage_taf_subsidiarycache">
+<_eml_nkey_>1226620_SB1~578~3~N</_eml_nkey_>
+<account>111</account>
+<approvalstatus>2</approvalstatus>
+<balance>-107120</balance>
+<baserecordtype>vendorbill</baserecordtype>
+<billaddr1>Street 1</billaddr1>
+<billaddress>
+Test Vendor UK&lt;br&gt;Street 1&lt;br&gt;London AB2 6NN&lt;br&gt;United Kingdom
+</billaddress>
+<billaddressee>Test Vendor UK</billaddressee>
+<billcity>London</billcity>
+<billcountry>GB</billcountry>
+<billingaddress>679</billingaddress>
+<billingaddress_key>679</billingaddress_key>
+<billoverride>F</billoverride>
+<billzip>AB2 6NN</billzip>
+<cancelvendbill>F</cancelvendbill>
+<companyid>575</companyid>
+<createddate>29/09/2026 9:18 am</createddate>
+<creditlimit_origtotal>12120.00</creditlimit_origtotal>
+<cseg_bit_4weeks>24</cseg_bit_4weeks>
+<currency>1</currency>
+<currencyname>GBP</currencyname>
+<currencyprecision>2</currencyprecision>
+<currencysymbol>GBP</currencysymbol>
+<custbody_11724_pay_bank_fees>F</custbody_11724_pay_bank_fees>
+<custbody_9997_is_for_ep_eft>F</custbody_9997_is_for_ep_eft>
+<custbody_atlas_no_hdn>2</custbody_atlas_no_hdn>
+<custbody_atlas_yes_hdn>1</custbody_atlas_yes_hdn>
+<custbody_cash_register>F</custbody_cash_register>
+<custbody_emea_transaction_type>vendbill</custbody_emea_transaction_type>
+<custbody_nexus_notc>2</custbody_nexus_notc>
+<custbody_nondeductible_processed>F</custbody_nondeductible_processed>
+<custbody_report_timestamp>29/9/2026 1:17:18</custbody_report_timestamp>
+<custbody_sii_article_72_73>F</custbody_sii_article_72_73>
+<custbody_sii_not_reported_in_time>F</custbody_sii_not_reported_in_time>
+<custbody_stc_amount_after_discount>12000.00</custbody_stc_amount_after_discount>
+<custbody_stc_tax_after_discount>120.00</custbody_stc_tax_after_discount>
+<custbody_stc_total_after_discount>12120.00</custbody_stc_total_after_discount>
+<custpage_cs_msgs>
+{"ERR_FIELD_TAXREPORTING_COUNTERPARTYVAT_VALUE":"Enter a valid VAT number in the Partner ID field on the Tax Reporting subtab.","ERR_FIELD_COUNTERPARTYVAT_VALUE":"Enter a valid VAT number in the Partner ID field."}
+</custpage_cs_msgs>
+<custpage_itr_nexus>GB</custpage_itr_nexus>
+<custpage_taf_subsidiarycache>
+{"1":"GB","41":"NL","31":"GB","5":"GB","10":"GB","32":"GB","7":"GB","9":"GB","8":"GB","11":"GB","12":"GB","6":"GB","33":"GB","13":"GB","15":"NL","22":"NL","29":"BE","30":"BE","36":"BE","20":"NL","19":"NL","42":"NL","28":"NL","35":"NL","16":"NL","17":"NL","37":"NL","23":"NL","24":"NL","38":"NL","25":"NL","40":"BE","34":"GB","4":"GB"}
+</custpage_taf_subsidiarycache>
+<datedriven>F</datedriven>
+<dbstrantype>VendBill</dbstrantype>
+<discpct>0</discpct>
+<documentstatus>A</documentstatus>
+<duedate>31/01/2026</duedate>
+<duedays>30</duedays>
+<edition>UK</edition>
+<entity>575</entity>
+<entityfieldname>entity</entityfieldname>
+<entityname>Test Vendor UK</entityname>
+<entitynexus>1</entitynexus>
+<entryformquerystring>id=4864&amp;xml=T</entryformquerystring>
+<exchangerate>1.00</exchangerate>
+<excludefromglnumbering>F</excludefromglnumbering>
+<id>4864</id>
+<initialentity>575</initialentity>
+<initialtranid>TEST Fixed Asset 2</initialtranid>
+<installmentcount>0</installmentcount>
+<isbasecurrency>T</isbasecurrency>
+<isinstallment>F</isinstallment>
+<lastmodifieddate>29/09/2026 9:23 am</lastmodifieddate>
+<linked>F</linked>
+<linkedclosedperioddiscounts>F</linkedclosedperioddiscounts>
+<linkedrevrecje>F</linkedrevrecje>
+<locationsrequired>F</locationsrequired>
+<mindays>0</mindays>
+<nextaccountdocnum>1</nextaccountdocnum>
+<nexus>1</nexus>
+<nexus_country>GB</nexus_country>
+<nlapiCC>F</nlapiCC>
+<nldept>0</nldept>
+<nlloc>0</nlloc>
+<nlrole>3</nlrole>
+<nlsub>1</nlsub>
+<nluser>578</nluser>
+<nsapiCT>1791463760341</nsapiCT>
+<ntype>17</ntype>
+<origcurrency>1</origcurrency>
+<origexchangerate>1.00</origexchangerate>
+<origtotal>12120</origtotal>
+<paymenthold>F</paymenthold>
+<payments>F</payments>
+<postingperiod>108</postingperiod>
+<pp_e>30/09/2026</pp_e>
+<pp_s>01/09/2026</pp_s>
+<ppsetbyuser>F</ppsetbyuser>
+<prevdate>29/09/2026</prevdate>
+<received>T</received>
+<status>Open</status>
+<statusRef>open</statusRef>
+<subsidiary>5</subsidiary>
+<taxperiod>3</taxperiod>
+<taxtotal>120.00</taxtotal>
+<terms>2</terms>
+<tobeprinted>F</tobeprinted>
+<total>12120.00</total>
+<trandate>01/01/2026</trandate>
+<tranid>TEST Fixed Asset 2</tranid>
+<transactionnumber>VENDBILL37</transactionnumber>
+<type>vendbill</type>
+<usertotal>12120.00</usertotal>
+<version>2</version>
+<voidblockedbylinks>F</voidblockedbylinks>
+<voided>F</voided>
+<warnnexuschange>F</warnnexuschange>
+<machine name="purchaseorders" type="list" fields="id,podate,linkurl,poid,poamount"/>
+<machine name="item" type="edit" fields="item,vendorname,olditemid,description,department,class,quantity,units,unitslist,unitconversionrate,rate,origrate,rateschedule,marginal,oqpbucket,amount,amounthasbeenset,netamount,taxcode,taxrate1,options,tax1amt,grossamt,amortizationsched,amortermsrc,amortizationtype,scheduletype,itemresidamt,itemresidamtispct,hasimmutableamortization,amortizstartdate,amortizationenddate,amortizationresidual,customer,isbillable,custcol_str_stat_value,custcol_emea_country_of_origin,custcol_nl_wkr_category,custcol_assets_under_construction,cseg_investment_cat,custcol_15529_eft_enabled,custcol_2663_companyname,custcol_2663_firstname,custcol_2663_isperson,custcol_2663_lastname,custcol_country_of_origin_code,custcol_country_of_origin_name,custcol_nature_of_transaction_codes,custcol_statistical_value_base_curr,custcol_str_stat_value_base_curr,orderdoc,orderline,line,lineuniquekey,linked,discline,printitems,ingroup,includegroupwrapper,groupsetup,itemtype,itemsubtype,isnoninventory,fulfillable,mandatorytaxcode,id,allowbilltoreceiptmatching,linenumber,historyurl,history"/>
+<machine name="transformations" type="list" fields="id,trandate,linkurl,type,tranid,amountDoc"/>
+<machine name="reimbursements" type="list" fields="id,reimbdate,linkurl,reimbid,reimbamount"/>
+<machine name="links" type="list" fields="id,trandate,linkurl,type,tranid,status,total"/>
+<machine name="expense" type="edit" fields="lineuniquekey,account,department,class,memo,amount,taxcode,taxrate1,customer,tax1amt,grossamt,isbillable,amortizationsched,amortizstartdate,amortizationenddate,amortizationresidual,category,custcol_nl_wkr_category,custcol_assets_under_construction,cseg_investment_cat,custcol_emea_country_of_origin,custcol_str_stat_value,custcol_far_trn_relatedasset,custcol_establishment_code,custcol_sii_service_date,custcol_sii_annual_prorate,custcol_emirate,custcol_statistical_procedure_purc,custcol_expense_code_of_supply,custcol_statistical_value,custcol_nondeductible_account,custcol_atlas_rc_po,custcol_atlas_promise_date,location,categoryexpaccount,numrules,expenseitem,billableenabled,orderdoc,orderline,amortermsrc,amortizationtype,scheduletype,hasimmutableamortization,line,historyurl,history">
+<line>
+<account>417</account>
+<account_display>
+251170 Property, Plant &amp; Equipment - Cost : Motor Vehicles
+</account_display>
+<amount>12000.00</amount>
+<billableenabled>F</billableenabled>
+<categoryexpaccount>417</categoryexpaccount>
+<grossamt>12120.00</grossamt>
+<hasimmutableamortization>F</hasimmutableamortization>
+<history>History</history>
+<historyurl>/app/accounting/transactions/history.nl?id=4864</historyurl>
+<isbillable>F</isbillable>
+<line>1</line>
+<lineuniquekey>7955</lineuniquekey>
+<numrules>0</numrules>
+<sys_id>12706143926577491</sys_id>
+<tax1amt>120.00</tax1amt>
+<taxcode>93</taxcode>
+<taxcode_display>VAT:S</taxcode_display>
+<taxrate1>1.0%</taxrate1>
+</line>
+</machine>
+<machine name="glimpactchanges" type="list" fields="creationdate,transactiondate,transactiontype,transactionkey,transactionnumber,transactionurl,changedby"/>
+</record>
+</nsResponse>
