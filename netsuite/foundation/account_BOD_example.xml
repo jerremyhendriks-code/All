@@ -1,0 +1,42 @@
+<!--
+    Foundation Group - example GL account 101 Trade Receivables (NetSuite record XML,
+    sandbox 1226620_SB1). _csrf (a session token) removed; '&' escaped so the file
+    is well-formed.
+-->
+<nsResponse>
+<record recordType="account" id="271" perm="4" fields="_eml_nkey_,_multibtnstate_,selectedtab,nsapiPI,nsapiSR,nsapiVF,nsapiFC,nsapiPS,nsapiVI,nsapiVD,nsapiPD,nsapiVL,nsapiRC,nsapiLI,nsapiLC,nsapiCT,nsbrowserenv,wfPI,wfSR,wfVF,wfFC,wfPS,type,id,externalid,whence,customwhence,entryformquerystring,_csrf,wfinstances,haschildren,lastmodifieddate,acctnumber,acctname,parent,accttype,sspecacct,accttype2,currency,generalrate,cashflowrate,inventory,revalue,eliminate,description,openingbalance,balance,fxbalance,hasparent,issummary,isinactive,reconcilewithmatching,department,class,location,subsidiary,includechildren,excludefrompaybillspage,restricttoaccountingbook,custrecord_acct_bank_account_number,custrecord_has_mx_localization,custrecord_fam_account_showinfixedasset,custrecord_nl_wkr_category_account,custrecord_l,custrecord_legacy_account_name,custrecord_legacy_account_type,custrecord_summary,cseg_investment_cat">
+<_eml_nkey_>1226620_SB1~578~3~N</_eml_nkey_>
+<acctname>Trade Receivables</acctname>
+<acctnumber>101</acctnumber>
+<accttype>AcctRec</accttype>
+<accttype2>AcctRec</accttype2>
+<balance>21106.05</balance>
+<cashflowrate>AVERAGE</cashflowrate>
+<custrecord_has_mx_localization>F</custrecord_has_mx_localization>
+<custrecord_summary>T</custrecord_summary>
+<eliminate>F</eliminate>
+<entryformquerystring>id=271&amp;xml=T</entryformquerystring>
+<excludefrompaybillspage>F</excludefrompaybillspage>
+<externalid>1010</externalid>
+<generalrate>CURRENT</generalrate>
+<haschildren>T</haschildren>
+<hasparent>F</hasparent>
+<id>271</id>
+<includechildren>T</includechildren>
+<inventory>F</inventory>
+<isinactive>T</isinactive>
+<issummary>T</issummary>
+<lastmodifieddate>31/08/2026 1:55 pm</lastmodifieddate>
+<nsapiCT>1791464945534</nsapiCT>
+<reconcilewithmatching>F</reconcilewithmatching>
+<revalue>T</revalue>
+<subsidiary>1</subsidiary>
+<type>account</type>
+<wfFC>workflow_fieldchanged</wfFC>
+<wfPI>workflow_pageinit</wfPI>
+<wfPS>workflow_postsourcing</wfPS>
+<wfSR>workflow_saverecord</wfSR>
+<wfVF>workflow_validatefield</wfVF>
+<machine name="localizations" type="edit" fields="locale,acctname"/>
+</record>
+</nsResponse>

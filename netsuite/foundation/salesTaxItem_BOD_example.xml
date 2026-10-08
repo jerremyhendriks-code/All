@@ -1,0 +1,81 @@
+<!--
+    Foundation Group - example sales tax item / tax code E-BE (NetSuite record XML,
+    sandbox 1226620_SB1). _csrf (a session token) removed; '&' escaped so the file
+    is well-formed.
+-->
+<nsResponse>
+<record recordType="salestaxitem" id="71" perm="4" fields="_eml_nkey_,_multibtnstate_,selectedtab,nsapiPI,nsapiSR,nsapiVF,nsapiFC,nsapiPS,nsapiVI,nsapiVD,nsapiPD,nsapiVL,nsapiRC,nsapiLI,nsapiLC,nsapiCT,nsbrowserenv,wfPI,wfSR,wfVF,wfFC,wfPS,type,id,externalid,whence,customwhence,entryformquerystring,_csrf,wfinstances,nexuscountry,itemtype,itemid,description,rate,effectivefrom,validuntil,subsidiary,includechildren,eccode,reversecharge,parent,service,export,exempt,isdefault,defaulttaxcode,excludefromtaxreports,isinactive,taxagency,taxtype,acct1,purchaseaccount,acct2,saleaccount,available,custrecord_4110_partial_credit,custrecord_is_direct_cost_service,custrecord_4110_import,custrecord_4110_non_recoverable,custrecord_deemed_supply,custrecord_for_digital_services,custrecord_tax_exemption_reason,custrecord_4110_duty,custrecord_4110_non_operation,custrecord_4110_government,custrecord_4110_outside_customs,custrecord_4110_triplicate,custrecord_gcc_state,custrecord_4110_paid,custrecord_4110_other_tax_evidence,custrecord_4110_reduced_rate,custrecord_4110_non_resident,custrecord_4110_parent_alt,custrecord_4110_reverse_charge_alt,custrecord_4110_unknown_tax_credit,custrecord_4110_suspended,custrecord_4110_non_taxable,custrecord_4110_purchaser_issued,custrecord_4110_category,custrecord_deferred_on,custrecord_4110_surcharge,custrecord_4110_non_deductible,custpage_4110_nondeductible_parent,custrecord_4110_nondeductible_account,custrecord_4110_no_tax_credit,custrecord_4110_cash_register,custrecord_4110_duplicate,custrecord_4110_special_territory,custrecord_4110_electronic,custrecord_4110_capital_goods,custrecord_4110_super_reduced,custrecord_4110_nondeductible_parent,custrecord_4110_no_tax_invoice,custrecord_post_notional_tax_amount,custrecord_notional_tax_debit_account,custrecord_notional_tax_credit_account,custrecord_100_percent_non_deductable,nluser,nlrole,nldept,nlloc,nlsub,baserecordtype,custpage_4110_category,custpage_4110_csscript,custpage_cs_msgs">
+<_eml_nkey_>1226620_SB1~578~3~N</_eml_nkey_>
+<acct1>Banking not in Opera / Zonal</acct1>
+<acct2>VAT on Sales - Belgium</acct2>
+<available>BOTH</available>
+<baserecordtype>salestaxitem</baserecordtype>
+<custpage_4110_category>S0</custpage_4110_category>
+<custpage_cs_msgs>
+{"TAX_CODE_100_PERCENT_NON_DEDUCTABLE_WARNING_MESSAGE":"Notional Rate Derived From field cannot be blank. To calculate the 100% non-deductible input tax, select the applicable standard tax code from the list.","TAX_CODE_100_PERCENT_NON_DEDUCTABLE_EXP_WARNING_MESSAGE":"Non-Deductible Expense Account field cannot be blank. Select the applicable non-deductible expense account from the list.","TAX_CODE_100_PERCENT_NOTIONAL_AND_EXP_WARNING_MESSAGE":"Non-Deductible Expense Account field cannot be blank. Select the applicable non-deductible expense account from the list.\n\nNotional Rate Derived From field cannot be blank. To calculate the 100% non-deductible input tax, select the applicable standard tax code from the list.","TAX_CODE_NOTIONAL_RATE_DERIVED_FROM_WARNING_MESSAGE":"Notional Rate Derived From field cannot be blank. To calculate the non-deductible input tax, select the applicable standard tax code from the list."}
+</custpage_cs_msgs>
+<custrecord_100_percent_non_deductable>F</custrecord_100_percent_non_deductable>
+<custrecord_4110_capital_goods>F</custrecord_4110_capital_goods>
+<custrecord_4110_cash_register>F</custrecord_4110_cash_register>
+<custrecord_4110_category>S0</custrecord_4110_category>
+<custrecord_4110_duplicate>F</custrecord_4110_duplicate>
+<custrecord_4110_duty>F</custrecord_4110_duty>
+<custrecord_4110_electronic>F</custrecord_4110_electronic>
+<custrecord_4110_government>F</custrecord_4110_government>
+<custrecord_4110_import>F</custrecord_4110_import>
+<custrecord_4110_no_tax_credit>F</custrecord_4110_no_tax_credit>
+<custrecord_4110_no_tax_invoice>F</custrecord_4110_no_tax_invoice>
+<custrecord_4110_non_deductible>F</custrecord_4110_non_deductible>
+<custrecord_4110_non_operation>F</custrecord_4110_non_operation>
+<custrecord_4110_non_recoverable>F</custrecord_4110_non_recoverable>
+<custrecord_4110_non_resident>F</custrecord_4110_non_resident>
+<custrecord_4110_non_taxable>F</custrecord_4110_non_taxable>
+<custrecord_4110_other_tax_evidence>F</custrecord_4110_other_tax_evidence>
+<custrecord_4110_outside_customs>F</custrecord_4110_outside_customs>
+<custrecord_4110_paid>F</custrecord_4110_paid>
+<custrecord_4110_partial_credit>F</custrecord_4110_partial_credit>
+<custrecord_4110_purchaser_issued>F</custrecord_4110_purchaser_issued>
+<custrecord_4110_reduced_rate>F</custrecord_4110_reduced_rate>
+<custrecord_4110_reverse_charge_alt>F</custrecord_4110_reverse_charge_alt>
+<custrecord_4110_special_territory>F</custrecord_4110_special_territory>
+<custrecord_4110_super_reduced>F</custrecord_4110_super_reduced>
+<custrecord_4110_surcharge>F</custrecord_4110_surcharge>
+<custrecord_4110_suspended>F</custrecord_4110_suspended>
+<custrecord_4110_triplicate>F</custrecord_4110_triplicate>
+<custrecord_4110_unknown_tax_credit>F</custrecord_4110_unknown_tax_credit>
+<custrecord_deemed_supply>F</custrecord_deemed_supply>
+<custrecord_for_digital_services>F</custrecord_for_digital_services>
+<custrecord_gcc_state>F</custrecord_gcc_state>
+<custrecord_is_direct_cost_service>F</custrecord_is_direct_cost_service>
+<custrecord_post_notional_tax_amount>F</custrecord_post_notional_tax_amount>
+<defaulttaxcode>60</defaulttaxcode>
+<description>Exempt</description>
+<eccode>F</eccode>
+<entryformquerystring>id=71&amp;xml=T</entryformquerystring>
+<excludefromtaxreports>F</excludefromtaxreports>
+<exempt>T</exempt>
+<export>F</export>
+<id>71</id>
+<includechildren>T</includechildren>
+<isdefault>F</isdefault>
+<isinactive>F</isinactive>
+<itemid>E-BE</itemid>
+<itemtype>TaxItem</itemtype>
+<nexuscountry>BE</nexuscountry>
+<nldept>0</nldept>
+<nlloc>0</nlloc>
+<nlrole>3</nlrole>
+<nlsub>1</nlsub>
+<nluser>578</nluser>
+<nsapiCT>1791464432473</nsapiCT>
+<purchaseaccount>251</purchaseaccount>
+<rate>0.00%</rate>
+<reversecharge>F</reversecharge>
+<saleaccount>250</saleaccount>
+<service>F</service>
+<subsidiary>1</subsidiary>
+<taxagency>39</taxagency>
+<taxtype>3</taxtype>
+<type>taxitem</type>
+</record>
+</nsResponse>
