@@ -1,13 +1,16 @@
 # Foundation Group: vendorBill FROM task (NetSuite to staging)
 
-This page covers reading vendor bills from Foundation Group's NetSuite with the TaskCentre NetSuite connector (REST record service, `vendorBill` › **Search**). The header goes into `dbo.tb_Netsuite_VendorBill` and the expense lines go into `dbo.tb_Netsuite_VendorBill_Expense`.
+This page covers reading vendor bills from Foundation Group's NetSuite with the TaskCentre NetSuite connector (REST record service, `vendorBill` › **Search**). The header goes into `dbo.tb_Netsuite_VendorBill`, the expense lines into `dbo.tb_Netsuite_VendorBill_Expense` and the item lines into `dbo.tb_Netsuite_VendorBill_Item`. `dbo.tb_Netsuite_VendorBill_GLImpactChanges` is also defined, but the connector can't fill it (see below).
 
 | File | What |
 |---|---|
 | `netsuite/foundation/vendorBill_BOD_example.xml` | Example bill from the FG sandbox (record XML), the basis for this design |
 | `netsuite/foundation/NetSuiteConnector_vendorBill_Foundation.xml` | Connector object design (`NetSuiteCatalogObj` vendorBill) |
-| `sql/foundation/create_tb_Netsuite_VendorBill.sql` | Header and expense line staging tables |
+| `sql/foundation/create_tb_Netsuite_VendorBill.sql` | All four tables: header, Expense, Item, GLImpactChanges. Renames existing tables to `_bak` first. |
+| `sql/foundation/create_tb_Netsuite_VendorBill_children.sql` | Only the three child tables; a table that already exists is skipped |
+| `docs/foundation_vendorbill_validation.md` | Validation report, column by column |
 | `tools/build_foundation_vendorbill_object.py` | Regenerates the connector object from the Ellomay export |
+| `tools/netsuite_masterdata.py` | Table spec, SQL generation and validation (`--group vendorbill`) |
 
 ## Connector object design
 
@@ -29,24 +32,33 @@ vendorBill
       └─ taxCode, customer, category, amortizationSched, cseg_investment_cat,
          custcol_far_trn_relatedasset, custcol_nl_wkr_category,
          custcol_nondeductible_account          (all _nsResource)
+└─ item                    (count, hasMore, offset, totalResults, items)
+   └─ items  [collection]  -> tb_Netsuite_VendorBill_Item
+      ├─ department, class
+      └─ item, taxCode, customer                (all _nsResource)
 ```
 
-`item` (item lines) and `accountingBookDetail` are not selected. The FG bills use the Expenses tab. If item lines are needed later, select `item` and add a `tb_Netsuite_VendorBill_Item` table on the same pattern.
+`accountingBookDetail` is not selected. FG item lines have no `location`: the item sublist in the FG record has department, class and customer, but no location.
+
+The four custom line fields (`cseg_investment_cat`, `custcol_far_trn_relatedasset`, `custcol_nl_wkr_category`, `custcol_nondeductible_account`) are selected in the connector but **not stored** yet. They exist in the FG record, but no metadata confirms their REST type, and the example line has no value. Add them to the Expense table after the metadata-catalog check.
+
+### GL impact changes
+
+The `glimpactchanges` sublist in the BOD (creation date, transaction date / type / key / number / URL, changed by) is a screen list. It isn't part of the REST `vendorBill` record, so the NetSuite connector can't return it, and none of its 8 columns can be confirmed. The table uses the BOD names in camelCase. Before loading it, find a source: look in Setup › Records Catalog for a record or SuiteQL table with these fields, or use a saved search.
+
+If what you need is the **GL impact itself** (debit and credit per account, per accounting book), that's a different table: SuiteQL `transactionaccountingline`. The `suiteql/vendorbill_lines.sql` query on branch `claude/laughing-hamilton-4eyfc8` already reads it.
 
 ### Importing the object
 
 Import `NetSuiteConnector_vendorBill_Foundation.xml` into the FG connector's business objects, or merge its `<anyType>` element into the FG BusinessObjects file. Then open `vendorBill` in the designer **against the FG account**. Check that the custom fields below exist there and have the same type. The connector shows a field it can't find in the account's metadata as missing.
 
-FG custom fields whose type is taken from the BOD values rather than an existing connector definition (check these in the designer):
+The `custbody_stc_*` fields are confirmed by the Ellomay vendorBill schema (same SuiteApp; `number`, `integer`, `string`). FG custom fields whose type is **not** confirmed by any metadata (check these in the designer):
 
-| Field | Type in the object | Reason |
+| Field | Type in the object | Evidence |
 |---|---|---|
-| `custbody_stc_amount_after_discount`, `_tax_after_discount`, `_total_after_discount` | number | value `12000.00` |
-| `custbody_stc_discountpercent` | number | percent field |
-| `custbody_stc_daysuntilexpiry` | integer | |
-| `custbody_stc_payment_transaction_id` | string | empty in the BOD |
-| `cseg_bit_4weeks`, `cseg_investment_cat` | nsResource | custom segments (value `24`) |
-| `custcol_far_trn_relatedasset`, `custcol_nl_wkr_category`, `custcol_nondeductible_account` | nsResource | list/record selects |
+| `cseg_bit_4weeks` | nsResource | custom segment; the BOD value `24` is an id |
+| `cseg_investment_cat` (line) | nsResource | custom segment; no value in the example |
+| `custcol_far_trn_relatedasset`, `custcol_nl_wkr_category`, `custcol_nondeductible_account` | nsResource | list/record selects; no value in the example |
 
 `custbody_15529_vendor_entity_bank` and `custbody_11187_pref_entity_bank` are the Electronic Bank Payments SuiteApp fields. They're kept as plain references (`nsResource`) instead of `customrecord_2663_entity_bank_details`, so the bank details record isn't expanded.
 
@@ -62,7 +74,7 @@ FG custom fields whose type is taken from the BOD values rather than an existing
    - Optionally also filter on `subsidiary` when loading per company (`BPA_Company`).
    - Internal pagination on. `expandRecords` stays unset: the search returns the full records, sublists included.
 2. **Database output, header** → `dbo.tb_Netsuite_VendorBill`. Map `vendorBill` fields 1:1 by name. References: `entity/id` → `entityId`, `entity/refName` → `entityRefName`, and so on. Set `BPA_Origin = 'NetSuite'`, `BPA_Direction = 'FROM'`, `BPA_Company`, `BPA_Reference = id`, `BPA_TaskID` / `BPA_TaskInstanceID`.
-3. **Database output, lines** → `dbo.tb_Netsuite_VendorBill_Expense` from `vendorBill/expense/items`. Set `vendorBillId` from the parent `vendorBill/id` and `BPA_ParentID` from the header row's `BPA_EntryID`.
+3. **Database output, lines** → `dbo.tb_Netsuite_VendorBill_Expense` from `vendorBill/expense/items`, and `dbo.tb_Netsuite_VendorBill_Item` from `vendorBill/item/items`. Set `vendorBillId` from the parent `vendorBill/id` and `BPA_ParentID` from the header row's `BPA_EntryID`.
 
 Each run inserts a row per returned bill (BPA pattern: the processing step picks the rows with `BPA_Status = 0`). `IX_tb_Netsuite_VendorBill_id (id, lastModifiedDate)` finds the latest version of a bill.
 
@@ -125,7 +137,21 @@ The BOD is NetSuite's record XML: lowercase UI names, references as an internal 
 | `isbillable` | `isBillable` | bit |
 | `amortizstartdate`, `amortizationenddate`, `amortizationresidual` | same, camelCase | |
 | `orderdoc`, `orderline` | `orderDoc`, `orderLine` | linked purchase order |
-| `cseg_investment_cat`, `custcol_far_trn_relatedasset`, `custcol_nl_wkr_category`, `custcol_nondeductible_account` | same | `…Id` / `…RefName` |
+| `cseg_investment_cat`, `custcol_far_trn_relatedasset`, `custcol_nl_wkr_category`, `custcol_nondeductible_account` | same | not stored yet (type unconfirmed) |
+
+### Item lines (`tb_Netsuite_VendorBill_Item`)
+
+| BOD (`item` machine) | REST (`item/items`) | Column |
+|---|---|---|
+| (parent `id`) | | `vendorBillId` NOT NULL |
+| `line`, `lineuniquekey` | `line`, `uniqueKey` | `line` NOT NULL, `uniqueKey` |
+| `item` | `item` | `itemId` / `itemRefName` |
+| `vendorname`, `description` | `vendorName`, `description` | same |
+| `quantity`, `units`, `rate`, `amount` | same | same |
+| `taxcode`, `taxrate1`, `tax1amt`, `grossamt` | `taxCode`, `taxRate1`, `tax1Amt`, `grossAmt` | `taxCodeId` / `taxCodeRefName`, ... |
+| `department`, `class`, `customer` | same | `…Id` / `…RefName` |
+| `isbillable`, `orderline` | `isBillable`, `orderLine` | same |
+| `amortizstartdate`, `amortizationenddate`, `amortizationresidual` | same, camelCase | same |
 
 ### Left out on purpose
 

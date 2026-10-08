@@ -28,7 +28,7 @@ HEADER_SELECTED = [
     'department', 'class', 'location', 'paymentHold', 'received', 'toBePrinted',
     'vatRegNum', 'billAddressee', 'billAttention', 'billAddr1', 'billAddr2',
     'billAddr3', 'billCity', 'billState', 'billZip', 'billCountry', 'billAddress',
-    'expense',
+    'expense', 'item',
 ]
 # Foundation Group custom body fields (from the vendorbill BOD).
 # name -> type; 'nsResource' = select / list / record reference
@@ -75,6 +75,32 @@ EXPENSE_FIELDS = {
     'custcol_far_trn_relatedasset': ('nsResource', True, False, True),
     'custcol_nl_wkr_category': ('nsResource', True, False, True),
     'custcol_nondeductible_account': ('nsResource', True, False, True),
+}
+# item/items fields (Ellomay vendorBill FROM schema + FG item sublist; FG has no location on item lines)
+ITEM_FIELDS = {
+    'amortizationEndDate': ('string', False, False, True),
+    'amortizationResidual': ('string', False, False, True),
+    'amortizStartDate': ('string', False, False, True),
+    'amount': ('number', False, False, True),
+    'class': ('classification', True, False, True),
+    'customer': ('nsResource', True, False, True),
+    'department': ('department', True, False, True),
+    'description': ('string', False, False, True),
+    'grossAmt': ('number', False, False, True),
+    'isBillable': ('boolean', False, False, True),
+    'item': ('nsResource', True, False, True),
+    'line': ('integer', False, False, True),
+    'links': ('nsLink', True, True, False),
+    'orderLine': ('integer', False, False, True),
+    'quantity': ('number', False, False, True),
+    'rate': ('number', False, False, True),
+    'refName': ('string', False, False, False),
+    'tax1Amt': ('number', False, False, True),
+    'taxCode': ('nsResource', True, False, True),
+    'taxRate1': ('number', False, False, True),
+    'uniqueKey': ('integer', False, False, True),
+    'units': ('string', False, False, True),
+    'vendorName': ('string', False, False, True),
 }
 CUSTOM_PREFIXES = ('custbody', 'custcol', 'custentity', 'custrecord', 'custitem', 'custevent', 'cseg')
 REF_FIELDS = {'id', 'refName'}   # only select what the REST response holds without expanding
@@ -193,22 +219,31 @@ ell_children = {c.findtext('Name'): c for c in obj['vendorBill'].find('ChildStru
 inv_items = find_child(find_child(obj['invoice'], 'item'), 'items')
 je_items = find_child(find_child(obj['journalEntry'], 'line'), 'items')
 
-# expense -> items
-exp_item_fields = [togglable(n, t, cx, coll, sel) for n, (t, cx, coll, sel) in sorted(EXPENSE_FIELDS.items(), key=lambda kv: kv[0].lower())]
-exp_children = [
-    record_ref(find_child(je_items, 'account'), 'items'),
-    record_ref(find_child(inv_items, 'department'), 'items'),
-    record_ref(find_child(inv_items, 'class'), 'items'),
-    record_ref(find_child(inv_items, 'location'), 'items'),
-] + [ns_resource(n, 'items') for n, (t, *_rest) in EXPENSE_FIELDS.items() if t == 'nsResource']
-items = child('items', 'items', 'expense', exp_item_fields, collection=True, children=exp_children)
+REF_TEMPLATES = {
+    'account': find_child(je_items, 'account'),
+    'department': find_child(inv_items, 'department'),
+    'class': find_child(inv_items, 'class'),
+    'location': find_child(inv_items, 'location'),
+}
 
-wrapper_fields = copy.deepcopy(list(find_child(obj['journalEntry'], 'line').find('Fields')))
-for f in wrapper_fields:
-    if f.findtext('FieldName') == 'items':
-        f.find('TypeName').text = 'vendorBill-expenseElement'
-set_selected(wrapper_fields, {'count', 'hasMore', 'items', 'offset', 'totalResults'})
-expense = child('expense', 'expense', 'vendorBill', wrapper_fields, children=[items])
+
+def sublist(name, spec):
+    """<name> wrapper (count, hasMore, offset, totalResults) -> items collection -> references."""
+    item_fields = [togglable(n, t, cx, coll, sel)
+                   for n, (t, cx, coll, sel) in sorted(spec.items(), key=lambda kv: kv[0].lower())]
+    refs = [record_ref(REF_TEMPLATES[n], 'items') for n in REF_TEMPLATES if n in spec]
+    refs += [ns_resource(n, 'items') for n, (t, *_rest) in spec.items() if t == 'nsResource']
+    items = child('items', 'items', name, item_fields, collection=True, children=refs)
+    wrapper_fields = copy.deepcopy(list(find_child(obj['journalEntry'], 'line').find('Fields')))
+    for f in wrapper_fields:
+        if f.findtext('FieldName') == 'items':
+            f.find('TypeName').text = f'vendorBill-{name}Element'
+    set_selected(wrapper_fields, {'count', 'hasMore', 'items', 'offset', 'totalResults'})
+    return child(name, name, 'vendorBill', wrapper_fields, children=[items]), item_fields, refs
+
+
+expense, exp_item_fields, exp_children = sublist('expense', EXPENSE_FIELDS)
+item, itm_item_fields, itm_children = sublist('item', ITEM_FIELDS)
 
 entity = drop_custom(copy.deepcopy(ell_children['entity_vendor']))
 set_selected(entity.find('Fields'), REF_FIELDS)
@@ -231,7 +266,7 @@ new_children = [
     record_ref(ell_children['class'], 'vendorBill'),
     record_ref(ell_children['location'], 'vendorBill'),
     object_ref('billCountry'),
-] + [ns_resource(n, 'vendorBill') for n, t in HEADER_CUSTOM.items() if t == 'nsResource'] + [expense]
+] + [ns_resource(n, 'vendorBill') for n, t in HEADER_CUSTOM.items() if t == 'nsResource'] + [expense, item]
 
 cs = vb.find('ChildStructures')
 for c in list(cs):
@@ -252,3 +287,4 @@ print(f'top-level fields: {len(fields)} ({len(sel)} selected)')
 print(f'operations: {[op.findtext("OperationName") for op in vb.find("OperationDetails")]}')
 print(f'children: {[c.findtext("Name") for c in cs]}')
 print(f'expense items: {len(exp_item_fields)} fields, children {[c.findtext("Name") for c in exp_children]}')
+print(f'item items: {len(itm_item_fields)} fields, children {[c.findtext("Name") for c in itm_children]}')

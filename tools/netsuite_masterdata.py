@@ -6,6 +6,8 @@ two can't drift apart.
 
     python3 tools/netsuite_masterdata.py sql full     > sql/foundation/create_netsuite_masterdata.sql
     python3 tools/netsuite_masterdata.py sql children > sql/foundation/create_netsuite_masterdata_children.sql
+    python3 tools/netsuite_masterdata.py sql full --group vendorbill     > sql/foundation/create_tb_Netsuite_VendorBill.sql
+    python3 tools/netsuite_masterdata.py sql children --group vendorbill > sql/foundation/create_tb_Netsuite_VendorBill_children.sql
     python3 tools/netsuite_masterdata.py check-ddl <your CREATE TABLE scripts>
     python3 tools/netsuite_masterdata.py validate --export <Ellomay connector export xml>
             [--xsd-dir <connector FROM-task schemas>]
@@ -86,8 +88,9 @@ VENDOR_ADDRESSBOOK = {
     ],
 }
 
-TABLES = [
+MASTERDATA = [
     {
+        'group': 'masterdata',
         'table': 'tb_NetSuite_Vendor', 'record': 'vendor', 'source': 'REST',
         'export_path': ['vendorBill/entity_vendor', 'vendorPayment/entity_vendor'], 'bod': 'vendor_BOD_example.xml',
         'columns': [
@@ -147,6 +150,7 @@ TABLES = [
         'children': [VENDOR_ADDRESSBOOK],
     },
     {
+        'group': 'masterdata',
         'table': 'tb_NetSuite_Classification', 'record': 'classification', 'source': 'REST',
         'export_path': 'classification',
         'columns': [
@@ -160,6 +164,7 @@ TABLES = [
         'children': [SUBSIDIARY_CHILD],
     },
     {
+        'group': 'masterdata',
         'table': 'tb_NetSuite_Department', 'record': 'department', 'source': 'REST',
         'export_path': 'inventoryItem/department',
         'columns': [
@@ -173,6 +178,7 @@ TABLES = [
         'children': [SUBSIDIARY_CHILD],
     },
     {
+        'group': 'masterdata',
         'table': 'tb_NetSuite_Location', 'record': 'location', 'source': 'REST',
         'export_path': 'invoice/location',
         'columns': [
@@ -191,6 +197,7 @@ TABLES = [
         'children': [SUBSIDIARY_CHILD],
     },
     {
+        'group': 'masterdata',
         'table': 'tb_NetSuite_Currency', 'record': 'currency', 'source': 'REST',
         'export_path': 'account/currency',
         'columns': [
@@ -210,6 +217,7 @@ TABLES = [
         ],
     },
     {
+        'group': 'masterdata',
         'table': 'tb_NetSuite_Term', 'record': 'term', 'source': 'DOC',
         'columns': [
             ID, EXTERNAL_ID,
@@ -226,6 +234,7 @@ TABLES = [
         ],
     },
     {
+        'group': 'masterdata',
         'table': 'tb_Netsuite_SalesTaxItem', 'record': 'salesTaxItem', 'source': 'BOD',
         'bod': 'salesTaxItem_BOD_example.xml',
         'columns': [
@@ -291,6 +300,7 @@ TABLES = [
         ],
     },
     {
+        'group': 'masterdata',
         'table': 'tb_NetSuite_Account', 'record': 'account', 'source': 'REST',
         'export_path': ['account', 'vendorBill/account'], 'bod': 'account_BOD_example.xml',
         'columns': [
@@ -323,6 +333,7 @@ TABLES = [
         'children': [SUBSIDIARY_CHILD],
     },
     {
+        'group': 'masterdata',
         'table': 'tb_NetSuite_Subsidiary', 'record': 'subsidiary', 'source': 'REST',
         'export_path': 'invoice/subsidiary',
         'columns': [
@@ -348,6 +359,151 @@ TABLES = [
         ],
     },
 ]
+
+# vendorBill: header + expense / item lines + GL impact changes
+FEATURE = 'depends on an account feature; exists in the FG record, not in the Ellomay definitions'
+VENDORBILL = [
+    {
+        'group': 'vendorbill',
+        'table': 'tb_Netsuite_VendorBill', 'record': 'vendorBill', 'source': 'REST',
+        'export_path': ['vendorBill'], 'bod': 'vendorBill_BOD_example.xml',
+        'columns': [
+            ID, EXTERNAL_ID,
+            col('tranId', 'nvarchar(255)', "vendor's invoice number (Reference No.)"),
+            col('transactionNumber', 'nvarchar(50)', "NetSuite's own number (VENDBILL37)"),
+            col('tranDate', 'date'),
+            col('dueDate', 'date'),
+            col('createdDate', 'datetime2(0)', 'UTC'),
+            LAST_MODIFIED,
+            *ref('entity', 'vendor'),
+            *ref('subsidiary'),
+            *ref('currency', name_len=100),
+            *ref('account', 'A/P account'),
+            *ref('postingPeriod', name_len=100),
+            *ref('terms', name_len=100),
+            *ref('approvalStatus', name_len=100),
+            *ref('status', 'open / Open, paidInFull / Paid In Full, ...', name_len=100),
+            *ref('department'),
+            *ref('class'),
+            *ref('location'),
+            col('exchangeRate', 'decimal(28,10)'),
+            col('total', 'decimal(19,4)'),
+            col('userTotal', 'decimal(19,4)'),
+            col('taxTotal', 'decimal(19,4)'),
+            col('discountAmount', 'decimal(19,4)'),
+            col('discountDate', 'date'),
+            col('memo', 'nvarchar(4000)'),
+            col('paymentHold', 'bit'),
+            col('received', 'bit'),
+            col('toBePrinted', 'bit'),
+            col('vatRegNum', 'nvarchar(100)'),
+            col('billAddressee', 'nvarchar(255)'),
+            col('billAttention', 'nvarchar(255)'),
+            col('billAddr1', 'nvarchar(255)'),
+            col('billAddr2', 'nvarchar(255)'),
+            col('billAddr3', 'nvarchar(255)'),
+            col('billCity', 'nvarchar(100)'),
+            col('billState', 'nvarchar(100)'),
+            col('billZip', 'nvarchar(50)'),
+            *ref('billCountry', id_len=10, name_len=100),
+            col('billAddress', 'nvarchar(1000)', 'full address as text'),
+            # Foundation Group custom fields
+            *ref('cseg_bit_4weeks', 'custom segment'),
+            col('custbody_document_date', 'date'),
+            col('custbody_establishment_code', 'nvarchar(100)'),
+            *ref('custbody_15529_vendor_entity_bank', 'vendor bank details used for payment'),
+            *ref('custbody_11187_pref_entity_bank'),
+            col('custbody_9997_is_for_ep_eft', 'bit'),
+            col('custbody_11724_pay_bank_fees', 'bit'),
+            col('custbody_stc_amount_after_discount', 'decimal(19,4)'),
+            col('custbody_stc_tax_after_discount', 'decimal(19,4)'),
+            col('custbody_stc_total_after_discount', 'decimal(19,4)'),
+            col('custbody_stc_discountpercent', 'decimal(9,4)'),
+            col('custbody_stc_daysuntilexpiry', 'int'),
+            col('custbody_stc_payment_transaction_id', 'nvarchar(100)'),
+        ],
+        'children': [
+            {
+                'suffix': 'Expense', 'field': 'expense', 'kind': 'lines', 'index': 'line',
+                'xsd_items': 'expense/items', 'bod_machine': 'expense',
+                'evidence': 'line fields: Ellomay vendorBill FROM schema (vendorBill.xsd); '
+                            'FG BOD expense line.',
+                'unconfirmed': {f: FEATURE for f in ('class', 'location', 'customer', 'category',
+                                                     'isBillable', 'amortizationSched')},
+                'columns': [
+                    col('line', 'int NOT NULL'),
+                    *ref('account'),
+                    col('amount', 'decimal(19,4)', 'net'),
+                    *ref('taxCode', name_len=100),
+                    col('taxRate1', 'decimal(9,4)', '1.0% -> 1.0000'),
+                    col('tax1Amt', 'decimal(19,4)'),
+                    col('grossAmt', 'decimal(19,4)'),
+                    col('memo', 'nvarchar(4000)'),
+                    *ref('department'),
+                    *ref('class'),
+                    *ref('location'),
+                    *ref('customer'),
+                    col('isBillable', 'bit'),
+                    *ref('category'),
+                    *ref('amortizationSched'),
+                    col('amortizStartDate', 'date'),
+                    col('amortizationEndDate', 'date'),
+                    col('amortizationResidual', 'nvarchar(100)'),
+                    col('orderDoc', 'nvarchar(100)', 'linked purchase order'),
+                    col('orderLine', 'nvarchar(50)'),
+                ],
+            },
+            {
+                'suffix': 'Item', 'field': 'item', 'kind': 'lines', 'index': 'line',
+                'xsd_items': 'item/items', 'bod_machine': 'item',
+                'evidence': 'line fields: Ellomay vendorBill FROM schema (vendorBill.xsd); '
+                            'FG BOD item sublist (field list only: the example bill has no item lines).',
+                'unconfirmed': {f: FEATURE for f in ('department', 'class', 'customer')},
+                'columns': [
+                    col('line', 'int NOT NULL'),
+                    col('uniqueKey', 'int', 'line unique key'),
+                    *ref('item'),
+                    col('vendorName', 'nvarchar(255)', "vendor's item code"),
+                    col('description', 'nvarchar(4000)'),
+                    col('quantity', 'decimal(28,10)'),
+                    col('units', 'nvarchar(100)'),
+                    col('rate', 'decimal(28,10)'),
+                    col('amount', 'decimal(19,4)', 'net'),
+                    *ref('taxCode', name_len=100),
+                    col('taxRate1', 'decimal(9,4)'),
+                    col('tax1Amt', 'decimal(19,4)'),
+                    col('grossAmt', 'decimal(19,4)'),
+                    *ref('department'),
+                    *ref('class'),
+                    *ref('customer'),
+                    col('isBillable', 'bit'),
+                    col('orderLine', 'int', 'linked purchase order line'),
+                    col('amortizStartDate', 'date'),
+                    col('amortizationEndDate', 'date'),
+                    col('amortizationResidual', 'nvarchar(100)'),
+                ],
+            },
+            {
+                'suffix': 'GLImpactChanges', 'field': 'glImpactChanges', 'kind': 'lines',
+                'index': 'transactionKey', 'bod_machine': 'glimpactchanges',
+                'evidence': 'FG BOD only (glimpactchanges sublist: field names, no lines). Not part '
+                            'of the REST vendorBill record, so the NetSuite connector does not '
+                            'return it; column names are the BOD names in camelCase.',
+                'columns': [
+                    col('creationDate', 'datetime2(0)', 'when the GL impact was changed'),
+                    col('transactionDate', 'date'),
+                    col('transactionType', 'nvarchar(100)'),
+                    col('transactionKey', 'nvarchar(100)'),
+                    col('transactionNumber', 'nvarchar(100)'),
+                    col('transactionUrl', 'nvarchar(1000)'),
+                    *ref('changedBy', 'employee'),
+                ],
+            },
+        ],
+    },
+]
+
+TABLES = MASTERDATA + VENDORBILL
 
 # BOD fields that are UI / session state, never record data
 UI_FIELDS = {
@@ -376,6 +532,38 @@ BOD_SKIP = {
         'globalsubscriptionstatus': 'marketing subscription status',
         'unsubscribe': 'marketing subscription flag',
         'custentity_bit_ispnext_vend_overview_rep': 'HTML link generated by a script',
+    },
+    'vendorBill': {
+        'statusRef': 'stored as statusId (status stored as statusRefName)',
+        'entityname': 'stored as entityRefName',
+        'currencyname': 'stored as currencyRefName',
+        'currencysymbol': 'currency label', 'currencyprecision': 'property of the currency',
+        'isbasecurrency': 'property of the currency',
+        'documentstatus': 'internal status code; status is stored',
+        'balance': 'not in the REST vendorBill record (amount open: SuiteQL foreignamountunpaid)',
+        'origtotal': 'UI copy of total', 'creditlimit_origtotal': 'UI copy of total',
+        'billingaddress': 'address subrecord key; the address itself is stored',
+        'billingaddress_key': 'address subrecord key', 'billoverride': 'address entered by hand (T/F)',
+        'cancelvendbill': 'UI action flag', 'companyid': 'UI copy of entity',
+        'entityfieldname': 'UI', 'entitynexus': 'UI: tax nexus of the vendor',
+        'initialentity': 'UI: value when the form was opened', 'initialtranid': 'UI: value when the form was opened',
+        'dbstrantype': 'UI: transaction type code', 'nextaccountdocnum': 'UI',
+        'discpct': 'from the terms (terms stored)', 'duedays': 'from the terms', 'mindays': 'from the terms',
+        'datedriven': 'from the terms',
+        'installmentcount': 'installments not used', 'isinstallment': 'installments not used',
+        'linked': 'UI: has linked records', 'linkedclosedperioddiscounts': 'UI', 'linkedrevrecje': 'UI',
+        'voidblockedbylinks': 'UI', 'voided': 'UI: voided bills are not loaded as open bills',
+        'payments': 'UI: has payments', 'locationsrequired': 'UI', 'excludefromglnumbering': 'GL audit numbering flag',
+        'nexus': 'legacy tax nexus', 'nexus_country': 'legacy tax nexus', 'taxperiod': 'legacy tax period',
+        'warnnexuschange': 'UI', 'pp_s': 'UI: posting period start', 'pp_e': 'UI: posting period end',
+        'ppsetbyuser': 'UI', 'prevdate': 'UI: previous transaction date',
+        'custbody_atlas_no_hdn': 'hidden helper field of a SuiteApp', 'custbody_atlas_yes_hdn': 'hidden helper field of a SuiteApp',
+        'custbody_cash_register': 'localisation (cash register), not used',
+        'custbody_emea_transaction_type': 'localisation (EMEA tax reporting), constant vendbill',
+        'custbody_nexus_notc': 'localisation (Intrastat)', 'custbody_nondeductible_processed': 'tax SuiteApp processing flag',
+        'custbody_report_timestamp': 'tax SuiteApp processing timestamp',
+        'custbody_sii_article_72_73': 'localisation (Spain SII), not used',
+        'custbody_sii_not_reported_in_time': 'localisation (Spain SII), not used',
     },
     'salesTaxItem': {
         'acct1': 'display name of purchaseAccount (stored as purchaseAccountRefName)',
@@ -516,7 +704,7 @@ def table_sql(t, mode):
 def child_sql(t, ch, mode):
     child = f"{t['table']}_{ch['suffix']}"
     parent = {'table': t['table'], 'record': t['record'], 'id_col': t['record'] + 'Id'}
-    what = 'one row per selected subsidiary' if ch['kind'] == 'refs' else 'one row per line'
+    what = f"one row per selected {ch['field']}" if ch['kind'] == 'refs' else 'one row per line'
     lines = [f"-- {t['record']}/{ch['field']}/items -> dbo.{child}: {what}"]
     body, ind = create_table(child, ch['columns'], mode, parent)
     lines += body
@@ -538,17 +726,19 @@ COMMON_NOTES = [
 ]
 
 
-def sql_script(which):
+def sql_script(which, group):
+    tables = [t for t in TABLES if t['group'] == group]
+    what = 'NetSuite master data' if group == 'masterdata' else 'NetSuite vendor bills'
     lines = ['/*']
     if which == 'full':
-        lines += ['    Foundation Group - staging tables for NetSuite master data (FROM tasks,',
-                  '    NetSuite connector): every table, header and child. Reference design:',
-                  '    compare your own tables with it (tools/netsuite_masterdata.py check-ddl).', '']
+        lines += [f'    Foundation Group - staging tables for {what} (FROM tasks,',
+                  '    NetSuite connector): every table, header and child. Compare your own',
+                  '    tables with it: tools/netsuite_masterdata.py check-ddl.', '']
     else:
-        lines += ['    Foundation Group - child tables for NetSuite master data (FROM tasks,',
+        lines += [f'    Foundation Group - child tables for {what} (FROM tasks,',
                   '    NetSuite connector). Adds only the child tables, next to the existing',
                   '    header tables; a table that already exists is skipped.', '']
-    for t in TABLES:
+    for t in tables:
         if which == 'full':
             lines.append(f"    dbo.{t['table']:<38}{t['record']}")
         for ch in t.get('children', []):
@@ -560,13 +750,14 @@ def sql_script(which):
                   '    Stops without changes if a _bak table already exists.']
     lines += ['    Runs in a single transaction.', '',
               '    Generated by tools/netsuite_masterdata.py: change the spec there and',
-              '    regenerate. See docs/foundation_masterdata.md.', '*/']
+              '    regenerate. See docs/foundation_masterdata.md and the validation report',
+              f"    docs/foundation_{group}_validation.md.", '*/']
     if which == 'full':
         lines += [REBUILD_PROC]
     else:
         lines += ['SET XACT_ABORT ON;', 'SET NOCOUNT ON;', 'GO']
     lines += ['BEGIN TRANSACTION;', '']
-    for t in TABLES:
+    for t in tables:
         if which == 'full':
             lines += table_sql(t, 'rebuild')
         for ch in t.get('children', []):
@@ -705,10 +896,68 @@ def bod_type_error(sql, value):
     return None
 
 
+def bod_machine(path, name):
+    """(field names, values of the first line) of a sublist ('machine') in a BOD."""
+    rec = ET.parse(path).getroot().find('record')
+    m = next((m for m in rec.findall('machine') if m.get('name') == name), None)
+    if m is None:
+        return None, None
+    names = {f.lower() for f in m.get('fields', '').split(',') if f}
+    line = m.find('line')
+    values = {e.tag: (e.text or '').strip() for e in line} if line is not None else {}
+    return names, values
+
+
+def is_custom(field):
+    return field.split('.')[0].startswith(('cust', 'cseg'))
+
+
+def judge(column, field, part, sql, kind, src, cat, bod_names, bod_vals, unconfirmed):
+    """Returns (rest cell, catalog cell, bod cell, confirmed, error or None)."""
+    key = field
+    bod_key = field.split('.')[-1].lower()
+    # FG BOD
+    value = bod_vals.get(bod_key, '') if bod_vals else ''
+    bod_err = bod_type_error(sql, value) if value and not part and kind != 'refs' else None
+    if bod_names is None:
+        bod_cell = '-'
+    elif bod_err:
+        bod_cell = f'**{bod_err}**'
+    elif value:
+        bod_cell = f'`{value[:30]}`'
+    else:
+        bod_cell = 'present' if bod_key in bod_names else 'not in BOD'
+    bod_value_ok = bool(value) and not bod_err
+    error = f'BOD {bod_err}' if bod_err else None
+    confirmed = False
+    cells = []
+    for name, source in (('REST', src), ('catalog', cat)):
+        if not source:
+            cells.append('-')
+            continue
+        err = check_column(column, key, part, sql, source, kind)
+        if not err:
+            cells.append('ok')
+            confirmed = True
+        elif err == 'MISSING' and name == 'REST' and is_custom(field) and bod_value_ok:
+            cells.append('not in metadata (FG custom field)')
+        elif err == 'MISSING' and name == 'REST' and field in unconfirmed and bod_names and bod_key in bod_names:
+            cells.append(f'not in metadata: {unconfirmed[field]}')
+        else:
+            cells.append(f'**{err}**')
+            error = error or f'{name} {err}'
+    if not confirmed and bod_value_ok and (cat is None):
+        confirmed = True                     # the FG record holds a value of the right type
+    if not src and not cat and not bod_value_ok and is_custom(field):
+        error = error or 'custom field without metadata or a BOD value'
+    return cells[0], cells[1], bod_cell, confirmed, error
+
+
 def validate(args):
     errors, report, summary = [], [], []
     export = load_export(args.export) if args.export else None
-    for t in TABLES:
+    tables = [t for t in TABLES if not args.group or t['group'] == args.group]
+    for t in tables:
         rec = t['record']
         rest = export(t['export_path']) if export and t.get('export_path') else {}
         xsd_path = os.path.join(args.xsd_dir, rec + '.xsd') if args.xsd_dir else None
@@ -718,58 +967,44 @@ def validate(args):
                 rest.setdefault(k, v)
         cat_path = os.path.join(args.catalog_dir, rec + '.json') if args.catalog_dir else None
         cat = load_catalog(cat_path, rec) if cat_path and os.path.exists(cat_path) else None
-        bod = bod_values(os.path.join(args.bod_dir, t['bod'])) if t.get('bod') else None
+        bod_path = os.path.join(args.bod_dir, t['bod']) if t.get('bod') else None
+        bod = bod_values(bod_path) if bod_path else None
 
-        groups = [(t['table'], None, t['columns'], rest)]
+        groups = [(t['table'], None, t['columns'], rest, set(bod) if bod is not None else None, bod)]
         for ch in t.get('children', []):
             if ch['kind'] == 'refs':
-                src = rest
+                src, names, vals = rest, None, None
             else:
                 src = export(ch['export_items']) if export and ch.get('export_items') else {}
                 if has_xsd and ch.get('xsd_items'):
                     for k, v in load_xsd(xsd_path, ch['xsd_items']).items():
                         src.setdefault(k, v)
-            groups.append((f"{t['table']}_{ch['suffix']}", ch, ch['columns'], src))
+                names, vals = (bod_machine(bod_path, ch['bod_machine'])
+                               if bod_path and ch.get('bod_machine') else (None, None))
+            groups.append((f"{t['table']}_{ch['suffix']}", ch, ch['columns'], src, names, vals))
 
         report += ['', f"## {t['table']} ({rec})", '',
                    f"Design source: {t['source']}. REST metadata: "
                    + ('connector export' + (' + FROM schema' if has_xsd else '') if rest else '**none**')
                    + '. FG metadata-catalog: ' + ('checked' if cat else 'not supplied')
                    + '. FG BOD: ' + ('checked' if bod else 'none') + '.']
-        for table, ch, columns, src in groups:
+        for table, ch, columns, src, names, vals in groups:
             kind = ch['kind'] if ch else None
             confirmed = 0
             report += ['', f'### {table}' + (f" ({rec}/{ch['field']}/items)" if ch else ''), '']
             if ch and ch.get('evidence'):
                 report += [f"Evidence: {ch['evidence']}", '']
-            report += [
-                       '| Column | SQL type | REST | FG BOD | FG catalog |', '|---|---|---|---|---|']
+            report += ['| Column | SQL type | REST | FG BOD | FG catalog |', '|---|---|---|---|---|']
+            unconfirmed = (ch or t).get('unconfirmed', {})
             for column, field, part, sql, _note in columns:
                 key = ch['field'] if kind == 'refs' else field
-                cells = []
-                for name, source in (('REST', src), ('catalog', cat)):
-                    if not source or (name == 'catalog' and ch and kind == 'lines'):
-                        cells.append('-')
-                        continue
-                    err = check_column(column, key, part, sql, source, kind)
-                    cells.append('ok' if not err else f'**{err}**')
-                    if err:
-                        errors.append(f'{table}.{column}: {name} {err}')
-                if cells[0] == 'ok' or cells[1] == 'ok':
-                    confirmed += 1
-                if bod is None or ch:
-                    bod_cell = '-'
-                elif field.lower() in bod:
-                    value = bod[field.lower()]
-                    err = bod_type_error(sql, value) if value and not part else None
-                    bod_cell = (f'`{value[:30]}`' if value else 'present') if not err else f'**{err}**'
-                    if err:
-                        errors.append(f'{table}.{column}: BOD {err}')
-                    if not rest and not cat:
-                        confirmed += 1 if value else 0
-                else:
-                    bod_cell = 'not in BOD'
-                report.append(f'| {column} | {sql} | {cells[0]} | {bod_cell} | {cells[1]} |')
+                ccat = None if (ch and kind == 'lines') else cat
+                rest_cell, cat_cell, bod_cell, ok, err = judge(
+                    column, key, part, sql, kind, src, ccat, names, vals, unconfirmed)
+                confirmed += ok
+                if err:
+                    errors.append(f'{table}.{column}: {err}')
+                report.append(f'| {column} | {sql} | {rest_cell} | {bod_cell} | {cat_cell} |')
             summary.append((table, confirmed, len(columns), bool(src), bool(cat)))
 
         if bod is not None:
@@ -791,15 +1026,16 @@ def validate(args):
                     errors.append(f"{t['table']}: BOD field {name} has a value but is not stored or explained")
             report += ['', 'BOD fields with a value that are not stored:', ''] + (skipped or ['- none'])
 
-    head = ['# Foundation Group master data tables: validation report', '',
+    head = ['# Foundation Group NetSuite tables: validation report', '',
             'Generated by `tools/netsuite_masterdata.py validate`. Errors: '
             + (str(len(errors)) if errors else 'none') + '.', '',
             '| Table | Columns confirmed | REST metadata | FG catalog |', '|---|---|---|---|']
     head += [f'| {tb} | {c} / {n} | {"yes" if r else "**no**"} | {"yes" if k else "not supplied"} |'
              for tb, c, n, r, k in summary]
-    head += ['', 'A column counts as confirmed when the REST metadata (connector export, FROM schema '
-             'or FG metadata-catalog) has the field with a matching type, or - for a record without '
-             'REST metadata - when the FG BOD holds a value of the matching type.']
+    head += ['', 'A column is confirmed when REST metadata (connector export, FROM schema or FG '
+             'metadata-catalog) has the field with a matching type, or when the FG BOD holds a value '
+             'of the matching type. "present" = the field exists in the FG record but the BOD has no '
+             'value, so its type is not confirmed.']
     if errors:
         head += ['', '## Errors', ''] + [f'- {e}' for e in errors]
     print('\n'.join(errors) if errors else 'validation passed: no errors', file=sys.stderr)
@@ -810,6 +1046,7 @@ def validate(args):
         with open(args.report, 'w', encoding='utf-8') as fh:
             fh.write('\n'.join(head + report) + '\n')
     return 1 if errors else 0
+
 
 # --------------------------------------------------------------------------- check-ddl
 
@@ -879,17 +1116,19 @@ def main():
     sub = ap.add_subparsers(dest='cmd', required=True)
     s = sub.add_parser('sql')
     s.add_argument('which', choices=['full', 'children'], nargs='?', default='full')
+    s.add_argument('--group', choices=['masterdata', 'vendorbill'], default='masterdata')
     v = sub.add_parser('validate')
     v.add_argument('--export', help='NetSuite connector BusinessObjects export (REST metadata)')
     v.add_argument('--xsd-dir', help='folder with connector FROM-task schemas <record>.xsd (extra REST evidence)')
     v.add_argument('--bod-dir', default='netsuite/foundation')
     v.add_argument('--catalog-dir', help='folder with <record>.json from the metadata-catalog')
+    v.add_argument('--group', choices=['masterdata', 'vendorbill'], help='default: all tables')
     v.add_argument('--report')
     c = sub.add_parser('check-ddl', help='compare your own CREATE TABLE scripts with the spec')
     c.add_argument('files', nargs='+')
     args = ap.parse_args()
     if args.cmd == 'sql':
-        sys.stdout.write(sql_script(args.which))
+        sys.stdout.write(sql_script(args.which, args.group))
         return 0
     if args.cmd == 'check-ddl':
         return check_ddl(args)

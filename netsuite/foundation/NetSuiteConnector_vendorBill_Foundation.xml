@@ -7563,6 +7563,1334 @@
         </Fields>
         <ChildObjectType />
       </BaseDesignerStructure>
+      <BaseDesignerStructure p2:type="NetSuiteChildObject">
+        <Name>item</Name>
+        <ChildStructures>
+          <BaseDesignerStructure p2:type="NetSuiteChildObject">
+            <Name>items</Name>
+            <ChildStructures>
+              <BaseDesignerStructure p2:type="NetSuiteChildObject">
+                <Name>department</Name>
+                <ChildStructures />
+                <ListItemName>department</ListItemName>
+                <ParentObjectName>items</ParentObjectName>
+                <ChildObjectName>department</ChildObjectName>
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <Args />
+                <Fields>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>externalId</FieldName>
+                    <DisplayName>externalId</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>true</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>externalId</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>fullName</FieldName>
+                    <DisplayName>fullName</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>true</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>fullName</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>id</FieldName>
+                    <DisplayName>id</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>true</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>id</ListItemName>
+                    <IsSelected>true</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>includeChildren</FieldName>
+                    <DisplayName>includeChildren</DisplayName>
+                    <TypeName>boolean</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>includeChildren</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>internalId</FieldName>
+                    <DisplayName>internalId</DisplayName>
+                    <TypeName>integer</TypeName>
+                    <IsNullable>true</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>internalId</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>isInactive</FieldName>
+                    <DisplayName>isInactive</DisplayName>
+                    <TypeName>boolean</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>isInactive</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>lastModifiedDate</FieldName>
+                    <DisplayName>lastModifiedDate</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>true</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>lastModifiedDate</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>links</FieldName>
+                    <DisplayName>links</DisplayName>
+                    <TypeName>nsLink</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>true</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>true</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>links</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>name</FieldName>
+                    <DisplayName>name</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>true</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>name</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>parent</FieldName>
+                    <DisplayName>parent</DisplayName>
+                    <TypeName>department</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>true</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>parent</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>refName</FieldName>
+                    <DisplayName>refName</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>refName</ListItemName>
+                    <IsSelected>true</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>subsidiary</FieldName>
+                    <DisplayName>subsidiary</DisplayName>
+                    <TypeName>subsidiaryCollection</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>true</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>subsidiary</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                </Fields>
+                <ChildObjectType />
+              </BaseDesignerStructure>
+              <BaseDesignerStructure p2:type="NetSuiteChildObject">
+                <Name>class</Name>
+                <ChildStructures />
+                <ListItemName>class</ListItemName>
+                <ParentObjectName>items</ParentObjectName>
+                <ChildObjectName>class</ChildObjectName>
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <Args />
+                <Fields>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>externalId</FieldName>
+                    <DisplayName>externalId</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>true</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>externalId</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>fullName</FieldName>
+                    <DisplayName>fullName</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>true</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>fullName</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>id</FieldName>
+                    <DisplayName>id</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>true</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>id</ListItemName>
+                    <IsSelected>true</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>includeChildren</FieldName>
+                    <DisplayName>includeChildren</DisplayName>
+                    <TypeName>boolean</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>includeChildren</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>internalId</FieldName>
+                    <DisplayName>internalId</DisplayName>
+                    <TypeName>integer</TypeName>
+                    <IsNullable>true</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>internalId</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>isInactive</FieldName>
+                    <DisplayName>isInactive</DisplayName>
+                    <TypeName>boolean</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>isInactive</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>lastModifiedDate</FieldName>
+                    <DisplayName>lastModifiedDate</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>true</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>lastModifiedDate</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>links</FieldName>
+                    <DisplayName>links</DisplayName>
+                    <TypeName>nsLink</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>true</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>true</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>links</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>name</FieldName>
+                    <DisplayName>name</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>true</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>name</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>parent</FieldName>
+                    <DisplayName>parent</DisplayName>
+                    <TypeName>classification</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>true</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>parent</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>refName</FieldName>
+                    <DisplayName>refName</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>refName</ListItemName>
+                    <IsSelected>true</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>subsidiary</FieldName>
+                    <DisplayName>subsidiary</DisplayName>
+                    <TypeName>subsidiaryCollection</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>true</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>subsidiary</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                </Fields>
+                <ChildObjectType />
+              </BaseDesignerStructure>
+              <BaseDesignerStructure p2:type="NetSuiteChildObject">
+                <Name>customer_nsResource</Name>
+                <ChildStructures />
+                <ListItemName>customer</ListItemName>
+                <ParentObjectName>items</ParentObjectName>
+                <ChildObjectName>customer</ChildObjectName>
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <Args />
+                <Fields>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>externalId</FieldName>
+                    <DisplayName>externalId</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>externalId</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>id</FieldName>
+                    <DisplayName>id</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>id</ListItemName>
+                    <IsSelected>true</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>links</FieldName>
+                    <DisplayName>links</DisplayName>
+                    <TypeName>nsLink</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>true</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>true</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>links</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>refName</FieldName>
+                    <DisplayName>refName</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>refName</ListItemName>
+                    <IsSelected>true</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                </Fields>
+                <ChildObjectType>nsResource</ChildObjectType>
+              </BaseDesignerStructure>
+              <BaseDesignerStructure p2:type="NetSuiteChildObject">
+                <Name>item_nsResource</Name>
+                <ChildStructures />
+                <ListItemName>item</ListItemName>
+                <ParentObjectName>items</ParentObjectName>
+                <ChildObjectName>item</ChildObjectName>
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <Args />
+                <Fields>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>externalId</FieldName>
+                    <DisplayName>externalId</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>externalId</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>id</FieldName>
+                    <DisplayName>id</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>id</ListItemName>
+                    <IsSelected>true</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>links</FieldName>
+                    <DisplayName>links</DisplayName>
+                    <TypeName>nsLink</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>true</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>true</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>links</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>refName</FieldName>
+                    <DisplayName>refName</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>refName</ListItemName>
+                    <IsSelected>true</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                </Fields>
+                <ChildObjectType>nsResource</ChildObjectType>
+              </BaseDesignerStructure>
+              <BaseDesignerStructure p2:type="NetSuiteChildObject">
+                <Name>taxCode_nsResource</Name>
+                <ChildStructures />
+                <ListItemName>taxCode</ListItemName>
+                <ParentObjectName>items</ParentObjectName>
+                <ChildObjectName>taxCode</ChildObjectName>
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <Args />
+                <Fields>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>externalId</FieldName>
+                    <DisplayName>externalId</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>externalId</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>id</FieldName>
+                    <DisplayName>id</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>id</ListItemName>
+                    <IsSelected>true</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>links</FieldName>
+                    <DisplayName>links</DisplayName>
+                    <TypeName>nsLink</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>true</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>true</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>links</ListItemName>
+                    <IsSelected>false</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                  <NetSuiteTogglableField>
+                    <Args />
+                    <FieldName>refName</FieldName>
+                    <DisplayName>refName</DisplayName>
+                    <TypeName>string</TypeName>
+                    <IsNullable>false</IsNullable>
+                    <IsRequired>false</IsRequired>
+                    <IsComplexType>false</IsComplexType>
+                    <ParamType>Querystring</ParamType>
+                    <Methods />
+                    <OneOfs />
+                    <IsCollection>false</IsCollection>
+                    <SupportsPagination>false</SupportsPagination>
+                    <IsInternalPaginationField>false</IsInternalPaginationField>
+                    <UpdateOnNull>false</UpdateOnNull>
+                    <ListItemName>refName</ListItemName>
+                    <IsSelected>true</IsSelected>
+                    <IsHidden>false</IsHidden>
+                  </NetSuiteTogglableField>
+                </Fields>
+                <ChildObjectType>nsResource</ChildObjectType>
+              </BaseDesignerStructure>
+            </ChildStructures>
+            <ListItemName>items</ListItemName>
+            <ParentObjectName>item</ParentObjectName>
+            <ChildObjectName>items</ChildObjectName>
+            <IsCollection>true</IsCollection>
+            <SupportsPagination>false</SupportsPagination>
+            <Args />
+            <Fields>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>amortizationEndDate</FieldName>
+                <DisplayName>amortizationEndDate</DisplayName>
+                <TypeName>string</TypeName>
+                <IsNullable>true</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>false</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>amortizationEndDate</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>amortizationResidual</FieldName>
+                <DisplayName>amortizationResidual</DisplayName>
+                <TypeName>string</TypeName>
+                <IsNullable>true</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>false</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>amortizationResidual</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>amortizStartDate</FieldName>
+                <DisplayName>amortizStartDate</DisplayName>
+                <TypeName>string</TypeName>
+                <IsNullable>true</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>false</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>amortizStartDate</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>amount</FieldName>
+                <DisplayName>amount</DisplayName>
+                <TypeName>number</TypeName>
+                <IsNullable>true</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>false</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>amount</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>class</FieldName>
+                <DisplayName>class</DisplayName>
+                <TypeName>classification</TypeName>
+                <IsNullable>false</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>true</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>class</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>customer</FieldName>
+                <DisplayName>customer</DisplayName>
+                <TypeName>nsResource</TypeName>
+                <IsNullable>false</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>true</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>customer</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>department</FieldName>
+                <DisplayName>department</DisplayName>
+                <TypeName>department</TypeName>
+                <IsNullable>false</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>true</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>department</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>description</FieldName>
+                <DisplayName>description</DisplayName>
+                <TypeName>string</TypeName>
+                <IsNullable>true</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>false</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>description</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>grossAmt</FieldName>
+                <DisplayName>grossAmt</DisplayName>
+                <TypeName>number</TypeName>
+                <IsNullable>true</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>false</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>grossAmt</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>isBillable</FieldName>
+                <DisplayName>isBillable</DisplayName>
+                <TypeName>boolean</TypeName>
+                <IsNullable>true</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>false</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>isBillable</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>item</FieldName>
+                <DisplayName>item</DisplayName>
+                <TypeName>nsResource</TypeName>
+                <IsNullable>false</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>true</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>item</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>line</FieldName>
+                <DisplayName>line</DisplayName>
+                <TypeName>integer</TypeName>
+                <IsNullable>true</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>false</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>line</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>links</FieldName>
+                <DisplayName>links</DisplayName>
+                <TypeName>nsLink</TypeName>
+                <IsNullable>false</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>true</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>true</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>links</ListItemName>
+                <IsSelected>false</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>orderLine</FieldName>
+                <DisplayName>orderLine</DisplayName>
+                <TypeName>integer</TypeName>
+                <IsNullable>true</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>false</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>orderLine</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>quantity</FieldName>
+                <DisplayName>quantity</DisplayName>
+                <TypeName>number</TypeName>
+                <IsNullable>true</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>false</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>quantity</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>rate</FieldName>
+                <DisplayName>rate</DisplayName>
+                <TypeName>number</TypeName>
+                <IsNullable>true</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>false</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>rate</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>refName</FieldName>
+                <DisplayName>refName</DisplayName>
+                <TypeName>string</TypeName>
+                <IsNullable>true</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>false</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>refName</ListItemName>
+                <IsSelected>false</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>tax1Amt</FieldName>
+                <DisplayName>tax1Amt</DisplayName>
+                <TypeName>number</TypeName>
+                <IsNullable>true</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>false</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>tax1Amt</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>taxCode</FieldName>
+                <DisplayName>taxCode</DisplayName>
+                <TypeName>nsResource</TypeName>
+                <IsNullable>false</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>true</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>taxCode</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>taxRate1</FieldName>
+                <DisplayName>taxRate1</DisplayName>
+                <TypeName>number</TypeName>
+                <IsNullable>true</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>false</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>taxRate1</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>uniqueKey</FieldName>
+                <DisplayName>uniqueKey</DisplayName>
+                <TypeName>integer</TypeName>
+                <IsNullable>true</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>false</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>uniqueKey</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>units</FieldName>
+                <DisplayName>units</DisplayName>
+                <TypeName>string</TypeName>
+                <IsNullable>true</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>false</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>units</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+              <NetSuiteTogglableField>
+                <Args />
+                <FieldName>vendorName</FieldName>
+                <DisplayName>vendorName</DisplayName>
+                <TypeName>string</TypeName>
+                <IsNullable>true</IsNullable>
+                <IsRequired>false</IsRequired>
+                <IsComplexType>false</IsComplexType>
+                <ParamType>Querystring</ParamType>
+                <Methods />
+                <OneOfs />
+                <IsCollection>false</IsCollection>
+                <SupportsPagination>false</SupportsPagination>
+                <IsInternalPaginationField>false</IsInternalPaginationField>
+                <UpdateOnNull>false</UpdateOnNull>
+                <ListItemName>vendorName</ListItemName>
+                <IsSelected>true</IsSelected>
+                <IsHidden>false</IsHidden>
+              </NetSuiteTogglableField>
+            </Fields>
+            <ChildObjectType />
+          </BaseDesignerStructure>
+        </ChildStructures>
+        <ListItemName>item</ListItemName>
+        <ParentObjectName>vendorBill</ParentObjectName>
+        <ChildObjectName>item</ChildObjectName>
+        <IsCollection>false</IsCollection>
+        <SupportsPagination>false</SupportsPagination>
+        <Args />
+        <Fields>
+          <NetSuiteTogglableField>
+            <Args />
+            <FieldName>count</FieldName>
+            <DisplayName>count</DisplayName>
+            <TypeName>integer</TypeName>
+            <IsNullable>false</IsNullable>
+            <IsRequired>false</IsRequired>
+            <IsComplexType>false</IsComplexType>
+            <ParamType>Querystring</ParamType>
+            <Methods />
+            <OneOfs />
+            <IsCollection>false</IsCollection>
+            <SupportsPagination>false</SupportsPagination>
+            <IsInternalPaginationField>false</IsInternalPaginationField>
+            <UpdateOnNull>false</UpdateOnNull>
+            <ListItemName>count</ListItemName>
+            <IsSelected>true</IsSelected>
+            <IsHidden>false</IsHidden>
+          </NetSuiteTogglableField>
+          <NetSuiteTogglableField>
+            <Args />
+            <FieldName>hasMore</FieldName>
+            <DisplayName>hasMore</DisplayName>
+            <TypeName>boolean</TypeName>
+            <IsNullable>false</IsNullable>
+            <IsRequired>false</IsRequired>
+            <IsComplexType>false</IsComplexType>
+            <ParamType>Querystring</ParamType>
+            <Methods />
+            <OneOfs />
+            <IsCollection>false</IsCollection>
+            <SupportsPagination>false</SupportsPagination>
+            <IsInternalPaginationField>false</IsInternalPaginationField>
+            <UpdateOnNull>false</UpdateOnNull>
+            <ListItemName>hasMore</ListItemName>
+            <IsSelected>true</IsSelected>
+            <IsHidden>false</IsHidden>
+          </NetSuiteTogglableField>
+          <NetSuiteTogglableField>
+            <Args />
+            <FieldName>items</FieldName>
+            <DisplayName>items</DisplayName>
+            <TypeName>vendorBill-itemElement</TypeName>
+            <IsNullable>false</IsNullable>
+            <IsRequired>false</IsRequired>
+            <IsComplexType>true</IsComplexType>
+            <ParamType>Querystring</ParamType>
+            <Methods />
+            <OneOfs />
+            <IsCollection>true</IsCollection>
+            <SupportsPagination>false</SupportsPagination>
+            <IsInternalPaginationField>false</IsInternalPaginationField>
+            <UpdateOnNull>false</UpdateOnNull>
+            <ListItemName>items</ListItemName>
+            <IsSelected>true</IsSelected>
+            <IsHidden>false</IsHidden>
+          </NetSuiteTogglableField>
+          <NetSuiteTogglableField>
+            <Args />
+            <FieldName>links</FieldName>
+            <DisplayName>links</DisplayName>
+            <TypeName>nsLink</TypeName>
+            <IsNullable>false</IsNullable>
+            <IsRequired>false</IsRequired>
+            <IsComplexType>true</IsComplexType>
+            <ParamType>Querystring</ParamType>
+            <Methods />
+            <OneOfs />
+            <IsCollection>true</IsCollection>
+            <SupportsPagination>false</SupportsPagination>
+            <IsInternalPaginationField>false</IsInternalPaginationField>
+            <UpdateOnNull>false</UpdateOnNull>
+            <ListItemName>links</ListItemName>
+            <IsSelected>false</IsSelected>
+            <IsHidden>false</IsHidden>
+          </NetSuiteTogglableField>
+          <NetSuiteTogglableField>
+            <Args />
+            <FieldName>offset</FieldName>
+            <DisplayName>offset</DisplayName>
+            <TypeName>integer</TypeName>
+            <IsNullable>false</IsNullable>
+            <IsRequired>false</IsRequired>
+            <IsComplexType>false</IsComplexType>
+            <ParamType>Querystring</ParamType>
+            <Methods />
+            <OneOfs />
+            <IsCollection>false</IsCollection>
+            <SupportsPagination>false</SupportsPagination>
+            <IsInternalPaginationField>false</IsInternalPaginationField>
+            <UpdateOnNull>false</UpdateOnNull>
+            <ListItemName>offset</ListItemName>
+            <IsSelected>true</IsSelected>
+            <IsHidden>false</IsHidden>
+          </NetSuiteTogglableField>
+          <NetSuiteTogglableField>
+            <Args />
+            <FieldName>totalResults</FieldName>
+            <DisplayName>totalResults</DisplayName>
+            <TypeName>integer</TypeName>
+            <IsNullable>false</IsNullable>
+            <IsRequired>false</IsRequired>
+            <IsComplexType>false</IsComplexType>
+            <ParamType>Querystring</ParamType>
+            <Methods />
+            <OneOfs />
+            <IsCollection>false</IsCollection>
+            <SupportsPagination>false</SupportsPagination>
+            <IsInternalPaginationField>false</IsInternalPaginationField>
+            <UpdateOnNull>false</UpdateOnNull>
+            <ListItemName>totalResults</ListItemName>
+            <IsSelected>true</IsSelected>
+            <IsHidden>false</IsHidden>
+          </NetSuiteTogglableField>
+        </Fields>
+        <ChildObjectType />
+      </BaseDesignerStructure>
     </ChildStructures>
     <ListItemName>vendorBill</ListItemName>
     <SupportedOperations>
@@ -14627,7 +15955,7 @@
         <IsInternalPaginationField>false</IsInternalPaginationField>
         <UpdateOnNull>false</UpdateOnNull>
         <ListItemName>item</ListItemName>
-        <IsSelected>false</IsSelected>
+        <IsSelected>true</IsSelected>
         <IsHidden>false</IsHidden>
       </NetSuiteTogglableField>
       <NetSuiteTogglableField>
