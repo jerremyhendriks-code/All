@@ -7,11 +7,20 @@ This page covers reading vendor bills from Foundation Group's NetSuite with the 
 | `netsuite/foundation/vendorBill_BOD_example.xml` | Example bill from the FG sandbox (record XML), the basis for this design |
 | `netsuite/foundation/NetSuiteConnector_vendorBill_Foundation.xml` | Connector object design (`NetSuiteCatalogObj` vendorBill) |
 | `sql/foundation/create_tb_Netsuite_VendorBill.sql` | All three tables: header, Expense, Item. Renames existing tables to `_bak` first. |
+| `sql/foundation/create_vw_Netsuite_VendorBill.sql` | Typed views `vw_Netsuite_VendorBill`, `_Expense`, `_Item`: number columns as decimals. **Read the data through these.** |
 | `sql/foundation/alter_tb_Netsuite_VendorBill.sql` | **For existing tables:** creates a missing child table, adds missing columns, and prints type differences, NOT NULL differences and columns not in the spec without changing them. Safe to run more than once. |
 | `sql/foundation/create_tb_Netsuite_VendorBill_children.sql` | Only the two child tables; a table that already exists is skipped |
 | `docs/foundation_vendorbill_validation.md` | Validation report, column by column |
 | `tools/build_foundation_vendorbill_object.py` | Regenerates the connector object from the Ellomay export |
 | `tools/netsuite_masterdata.py` | Table spec, SQL generation and validation (`--group vendorbill`) |
+
+## Decimal comma
+
+The connector writes numbers with the decimal separator of the Windows account the TaskCentre service runs under. In the FG environment that's a comma: `907,5`. SQL Server can't convert that to `decimal` (error 8114, "Error converting data type nvarchar to numeric"), and the customer's server settings stay as they are. So:
+
+- **In the tables,** the number columns (`total`, `taxTotal`, `amount`, `grossAmt`, `taxRate1`, `quantity`, `rate`, ...) are `nvarchar(50)`. They take the value exactly as the connector sends it, and the TaskCentre mapping doesn't change.
+- **The views** `vw_Netsuite_VendorBill`, `vw_Netsuite_VendorBill_Expense` and `vw_Netsuite_VendorBill_Item` return every column, with those numbers as `decimal`. They convert with `REPLACE(',', '.')`, falling back through `float` for scientific notation. The connector never writes a thousands separator, so the replace is safe. A value that still doesn't convert becomes NULL; the check query at the end of the view script lists those.
+- **For existing tables,** the alter script changes these columns from `decimal` to `nvarchar(50)`. That's lossless: `37.2000` stays `37.2000`.
 
 ## Connector object design
 

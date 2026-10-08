@@ -59,12 +59,12 @@ BEGIN
         line                        int NOT NULL,
         accountId                   nvarchar(100) NULL,
         accountRefName              nvarchar(400) NULL,
-        amount                      decimal(19,4) NULL,         -- net
+        amount                      nvarchar(50) NULL,          -- net; number as text, decimal(19,4) in the view
         taxCodeId                   nvarchar(100) NULL,
         taxCodeRefName              nvarchar(100) NULL,
-        taxRate1                    decimal(9,4) NULL,          -- 1.0% -> 1.0000
-        tax1Amt                     decimal(19,4) NULL,
-        grossAmt                    decimal(19,4) NULL,
+        taxRate1                    nvarchar(50) NULL,          -- 1.0% -> 1.0000; number as text, decimal(9,4) in the view
+        tax1Amt                     nvarchar(50) NULL,          -- number as text, decimal(19,4) in the view
+        grossAmt                    nvarchar(50) NULL,          -- number as text, decimal(19,4) in the view
         memo                        nvarchar(4000) NULL,
         departmentId                nvarchar(100) NULL,
         departmentRefName           nvarchar(400) NULL,
@@ -82,6 +82,8 @@ BEGIN
         amortizStartDate            date NULL,
         amortizationEndDate         date NULL,
         amortizationResidual        nvarchar(100) NULL,
+        amortizationType            nvarchar(50) NULL,          -- STANDARD, VARIABLE
+        scheduleType                nvarchar(50) NULL,          -- Amortization
         orderDoc                    nvarchar(100) NULL,         -- linked purchase order
         orderLine                   nvarchar(50) NULL,
         CONSTRAINT PK_tb_Netsuite_VendorBill_Expense PRIMARY KEY CLUSTERED (BPA_EntryID)
@@ -131,15 +133,15 @@ BEGIN
         itemRefName                 nvarchar(400) NULL,
         vendorName                  nvarchar(255) NULL,         -- vendor's item code
         description                 nvarchar(4000) NULL,
-        quantity                    decimal(28,10) NULL,
+        quantity                    nvarchar(50) NULL,          -- number as text, decimal(28,10) in the view
         units                       nvarchar(100) NULL,
-        rate                        decimal(28,10) NULL,
-        amount                      decimal(19,4) NULL,         -- net
+        rate                        nvarchar(50) NULL,          -- number as text, decimal(28,10) in the view
+        amount                      nvarchar(50) NULL,          -- net; number as text, decimal(19,4) in the view
         taxCodeId                   nvarchar(100) NULL,
         taxCodeRefName              nvarchar(100) NULL,
-        taxRate1                    decimal(9,4) NULL,
-        tax1Amt                     decimal(19,4) NULL,
-        grossAmt                    decimal(19,4) NULL,
+        taxRate1                    nvarchar(50) NULL,          -- number as text, decimal(9,4) in the view
+        tax1Amt                     nvarchar(50) NULL,          -- number as text, decimal(19,4) in the view
+        grossAmt                    nvarchar(50) NULL,          -- number as text, decimal(19,4) in the view
         departmentId                nvarchar(100) NULL,
         departmentRefName           nvarchar(400) NULL,
         classId                     nvarchar(100) NULL,

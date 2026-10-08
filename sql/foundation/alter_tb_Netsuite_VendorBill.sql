@@ -5,6 +5,8 @@
     1. Creates a child table that does not exist yet (full definition).
     2. Adds every column that is missing, as NULL (also the ones that are
        NOT NULL in the spec: existing rows have no value for them).
+       Changes decimal columns that the spec stores as text to nvarchar(50)
+       (numbers with a decimal comma; lossless). The vw_ views type them.
     3. Reports (PRINT), without changing anything: columns whose type differs
        from the spec, columns that should be NOT NULL, and columns that are not
        in the spec. Change those by hand after checking the data.
@@ -61,12 +63,12 @@ BEGIN
         line                        int NOT NULL,
         accountId                   nvarchar(100) NULL,
         accountRefName              nvarchar(400) NULL,
-        amount                      decimal(19,4) NULL,         -- net
+        amount                      nvarchar(50) NULL,          -- net; number as text, decimal(19,4) in the view
         taxCodeId                   nvarchar(100) NULL,
         taxCodeRefName              nvarchar(100) NULL,
-        taxRate1                    decimal(9,4) NULL,          -- 1.0% -> 1.0000
-        tax1Amt                     decimal(19,4) NULL,
-        grossAmt                    decimal(19,4) NULL,
+        taxRate1                    nvarchar(50) NULL,          -- 1.0% -> 1.0000; number as text, decimal(9,4) in the view
+        tax1Amt                     nvarchar(50) NULL,          -- number as text, decimal(19,4) in the view
+        grossAmt                    nvarchar(50) NULL,          -- number as text, decimal(19,4) in the view
         memo                        nvarchar(4000) NULL,
         departmentId                nvarchar(100) NULL,
         departmentRefName           nvarchar(400) NULL,
@@ -84,6 +86,8 @@ BEGIN
         amortizStartDate            date NULL,
         amortizationEndDate         date NULL,
         amortizationResidual        nvarchar(100) NULL,
+        amortizationType            nvarchar(50) NULL,          -- STANDARD, VARIABLE
+        scheduleType                nvarchar(50) NULL,          -- Amortization
         orderDoc                    nvarchar(100) NULL,         -- linked purchase order
         orderLine                   nvarchar(50) NULL,
         CONSTRAINT PK_tb_Netsuite_VendorBill_Expense PRIMARY KEY CLUSTERED (BPA_EntryID)
@@ -133,15 +137,15 @@ BEGIN
         itemRefName                 nvarchar(400) NULL,
         vendorName                  nvarchar(255) NULL,         -- vendor's item code
         description                 nvarchar(4000) NULL,
-        quantity                    decimal(28,10) NULL,
+        quantity                    nvarchar(50) NULL,          -- number as text, decimal(28,10) in the view
         units                       nvarchar(100) NULL,
-        rate                        decimal(28,10) NULL,
-        amount                      decimal(19,4) NULL,         -- net
+        rate                        nvarchar(50) NULL,          -- number as text, decimal(28,10) in the view
+        amount                      nvarchar(50) NULL,          -- net; number as text, decimal(19,4) in the view
         taxCodeId                   nvarchar(100) NULL,
         taxCodeRefName              nvarchar(100) NULL,
-        taxRate1                    decimal(9,4) NULL,
-        tax1Amt                     decimal(19,4) NULL,
-        grossAmt                    decimal(19,4) NULL,
+        taxRate1                    nvarchar(50) NULL,          -- number as text, decimal(9,4) in the view
+        tax1Amt                     nvarchar(50) NULL,          -- number as text, decimal(19,4) in the view
+        grossAmt                    nvarchar(50) NULL,          -- number as text, decimal(19,4) in the view
         departmentId                nvarchar(100) NULL,
         departmentRefName           nvarchar(400) NULL,
         classId                     nvarchar(100) NULL,
@@ -217,11 +221,11 @@ INSERT INTO @spec (tbl, col, typ, not_null, df_name, df) VALUES
     (N'tb_Netsuite_VendorBill', N'classRefName', N'nvarchar(400)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill', N'locationId', N'nvarchar(100)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill', N'locationRefName', N'nvarchar(400)', 0, NULL, NULL),
-    (N'tb_Netsuite_VendorBill', N'exchangeRate', N'decimal(28,10)', 0, NULL, NULL),
-    (N'tb_Netsuite_VendorBill', N'total', N'decimal(19,4)', 0, NULL, NULL),
-    (N'tb_Netsuite_VendorBill', N'userTotal', N'decimal(19,4)', 0, NULL, NULL),
-    (N'tb_Netsuite_VendorBill', N'taxTotal', N'decimal(19,4)', 0, NULL, NULL),
-    (N'tb_Netsuite_VendorBill', N'discountAmount', N'decimal(19,4)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill', N'exchangeRate', N'nvarchar(50)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill', N'total', N'nvarchar(50)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill', N'userTotal', N'nvarchar(50)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill', N'taxTotal', N'nvarchar(50)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill', N'discountAmount', N'nvarchar(50)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill', N'discountDate', N'date', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill', N'memo', N'nvarchar(4000)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill', N'documentStatus', N'nvarchar(10)', 0, NULL, NULL),
@@ -250,10 +254,10 @@ INSERT INTO @spec (tbl, col, typ, not_null, df_name, df) VALUES
     (N'tb_Netsuite_VendorBill', N'custbody_11187_pref_entity_bankRefName', N'nvarchar(400)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill', N'custbody_9997_is_for_ep_eft', N'bit', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill', N'custbody_11724_pay_bank_fees', N'bit', 0, NULL, NULL),
-    (N'tb_Netsuite_VendorBill', N'custbody_stc_amount_after_discount', N'decimal(19,4)', 0, NULL, NULL),
-    (N'tb_Netsuite_VendorBill', N'custbody_stc_tax_after_discount', N'decimal(19,4)', 0, NULL, NULL),
-    (N'tb_Netsuite_VendorBill', N'custbody_stc_total_after_discount', N'decimal(19,4)', 0, NULL, NULL),
-    (N'tb_Netsuite_VendorBill', N'custbody_stc_discountpercent', N'decimal(9,4)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill', N'custbody_stc_amount_after_discount', N'nvarchar(50)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill', N'custbody_stc_tax_after_discount', N'nvarchar(50)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill', N'custbody_stc_total_after_discount', N'nvarchar(50)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill', N'custbody_stc_discountpercent', N'nvarchar(50)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill', N'custbody_stc_daysuntilexpiry', N'int', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill', N'custbody_stc_payment_transaction_id', N'nvarchar(100)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill', N'custbody_bit_zonalurl', N'nvarchar(1000)', 0, NULL, NULL),
@@ -283,12 +287,12 @@ INSERT INTO @spec (tbl, col, typ, not_null, df_name, df) VALUES
     (N'tb_Netsuite_VendorBill_Expense', N'line', N'int', 1, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Expense', N'accountId', N'nvarchar(100)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Expense', N'accountRefName', N'nvarchar(400)', 0, NULL, NULL),
-    (N'tb_Netsuite_VendorBill_Expense', N'amount', N'decimal(19,4)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill_Expense', N'amount', N'nvarchar(50)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Expense', N'taxCodeId', N'nvarchar(100)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Expense', N'taxCodeRefName', N'nvarchar(100)', 0, NULL, NULL),
-    (N'tb_Netsuite_VendorBill_Expense', N'taxRate1', N'decimal(9,4)', 0, NULL, NULL),
-    (N'tb_Netsuite_VendorBill_Expense', N'tax1Amt', N'decimal(19,4)', 0, NULL, NULL),
-    (N'tb_Netsuite_VendorBill_Expense', N'grossAmt', N'decimal(19,4)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill_Expense', N'taxRate1', N'nvarchar(50)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill_Expense', N'tax1Amt', N'nvarchar(50)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill_Expense', N'grossAmt', N'nvarchar(50)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Expense', N'memo', N'nvarchar(4000)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Expense', N'departmentId', N'nvarchar(100)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Expense', N'departmentRefName', N'nvarchar(400)', 0, NULL, NULL),
@@ -306,6 +310,8 @@ INSERT INTO @spec (tbl, col, typ, not_null, df_name, df) VALUES
     (N'tb_Netsuite_VendorBill_Expense', N'amortizStartDate', N'date', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Expense', N'amortizationEndDate', N'date', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Expense', N'amortizationResidual', N'nvarchar(100)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill_Expense', N'amortizationType', N'nvarchar(50)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill_Expense', N'scheduleType', N'nvarchar(50)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Expense', N'orderDoc', N'nvarchar(100)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Expense', N'orderLine', N'nvarchar(50)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Item', N'BPA_Origin', N'nvarchar(50)', 0, NULL, NULL),
@@ -337,15 +343,15 @@ INSERT INTO @spec (tbl, col, typ, not_null, df_name, df) VALUES
     (N'tb_Netsuite_VendorBill_Item', N'itemRefName', N'nvarchar(400)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Item', N'vendorName', N'nvarchar(255)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Item', N'description', N'nvarchar(4000)', 0, NULL, NULL),
-    (N'tb_Netsuite_VendorBill_Item', N'quantity', N'decimal(28,10)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill_Item', N'quantity', N'nvarchar(50)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Item', N'units', N'nvarchar(100)', 0, NULL, NULL),
-    (N'tb_Netsuite_VendorBill_Item', N'rate', N'decimal(28,10)', 0, NULL, NULL),
-    (N'tb_Netsuite_VendorBill_Item', N'amount', N'decimal(19,4)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill_Item', N'rate', N'nvarchar(50)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill_Item', N'amount', N'nvarchar(50)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Item', N'taxCodeId', N'nvarchar(100)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Item', N'taxCodeRefName', N'nvarchar(100)', 0, NULL, NULL),
-    (N'tb_Netsuite_VendorBill_Item', N'taxRate1', N'decimal(9,4)', 0, NULL, NULL),
-    (N'tb_Netsuite_VendorBill_Item', N'tax1Amt', N'decimal(19,4)', 0, NULL, NULL),
-    (N'tb_Netsuite_VendorBill_Item', N'grossAmt', N'decimal(19,4)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill_Item', N'taxRate1', N'nvarchar(50)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill_Item', N'tax1Amt', N'nvarchar(50)', 0, NULL, NULL),
+    (N'tb_Netsuite_VendorBill_Item', N'grossAmt', N'nvarchar(50)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Item', N'departmentId', N'nvarchar(100)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Item', N'departmentRefName', N'nvarchar(400)', 0, NULL, NULL),
     (N'tb_Netsuite_VendorBill_Item', N'classId', N'nvarchar(100)', 0, NULL, NULL),
@@ -387,7 +393,15 @@ BEGIN
     END
     ELSE
     BEGIN
-        IF @have <> @typ
+        IF @have <> @typ AND @have LIKE N'decimal(%' AND @typ LIKE N'nvarchar(%'
+        BEGIN
+            -- number column -> text column (decimal comma from the connector): lossless
+            SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@tbl) + N' ALTER COLUMN ' + QUOTENAME(@col) + N' ' + @typ
+                     + IIF(@have_nn = 1, N' NOT NULL', N' NULL') + N';';
+            EXEC sys.sp_executesql @sql;
+            PRINT N'Changed  ' + @tbl + N'.' + @col + N' ' + @have + N' -> ' + @typ;
+        END
+        ELSE IF @have <> @typ
             PRINT N'TYPE     ' + @tbl + N'.' + @col + N' is ' + @have + N', spec ' + @typ + N' (not changed)';
         IF @nn = 1 AND @have_nn = 0
             PRINT N'NULL     ' + @tbl + N'.' + @col + N' allows NULL, spec NOT NULL (not changed)';

@@ -9,6 +9,7 @@ two can't drift apart.
     python3 tools/netsuite_masterdata.py sql full --group vendorbill     > sql/foundation/create_tb_Netsuite_VendorBill.sql
     python3 tools/netsuite_masterdata.py sql children --group vendorbill > sql/foundation/create_tb_Netsuite_VendorBill_children.sql
     python3 tools/netsuite_masterdata.py sql alter --group vendorbill    > sql/foundation/alter_tb_Netsuite_VendorBill.sql
+    python3 tools/netsuite_masterdata.py sql views --group vendorbill    > sql/foundation/create_vw_Netsuite_VendorBill.sql
     python3 tools/netsuite_masterdata.py check-ddl <your CREATE TABLE scripts>
     python3 tools/netsuite_masterdata.py validate --export <Ellomay connector export xml>
             [--xsd-dir <connector FROM-task schemas>]
@@ -365,10 +366,10 @@ MASTERDATA = [
 FEATURE = 'depends on an account feature; exists in the FG record, not in the Ellomay definitions'
 VENDORBILL = [
     {
-        'group': 'vendorbill',
+        'group': 'vendorbill', 'numbers_as_text': True,
         'table': 'tb_Netsuite_VendorBill', 'record': 'vendorBill', 'source': 'REST',
         'export_path': ['vendorBill'], 'bod': 'vendorBill_BOD_example.xml',
-        'output': 'vendorBill_connector_output_sample.xml',
+        'output': ['vendorBill_connector_output_sample.xml', 'vendorBill_connector_output_sample2.xml'],
         'columns': [
             ID, EXTERNAL_ID,
             col('tranId', 'nvarchar(255)', "vendor's invoice number (Reference No.)"),
@@ -453,6 +454,8 @@ VENDORBILL = [
                     col('amortizStartDate', 'date'),
                     col('amortizationEndDate', 'date'),
                     col('amortizationResidual', 'nvarchar(100)'),
+                    col('amortizationType', 'nvarchar(50)', 'STANDARD, VARIABLE'),
+                    col('scheduleType', 'nvarchar(50)', 'Amortization'),
                     col('orderDoc', 'nvarchar(100)', 'linked purchase order'),
                     col('orderLine', 'nvarchar(50)'),
                 ],
@@ -529,6 +532,7 @@ BOD_SKIP = {
         'isbasecurrency': 'property of the currency',
         'balance': "the vendor's balance, not the bill's open amount (bill 4864: -107120 against a total of 12120); open amount: SuiteQL foreignamountunpaid",
         'billingaddress_text': 'same text as billAddress (stored)',
+        'customform': 'the NetSuite form the bill was entered with (The Foundation - Vendor Bill)',
         'overrideinstallments': 'installments not used',
         'origtotal': 'UI copy of total', 'creditlimit_origtotal': 'UI copy of total',
         'billingaddress': 'address subrecord key; the address itself is stored',
@@ -642,6 +646,23 @@ GO
 
 
 
+def stored(t, columns):
+    """Columns as stored in the table. With 'numbers_as_text', decimal columns are
+    nvarchar(50): the connector writes numbers with the server's decimal separator
+    (37,2), which SQL Server can't convert; the vw_ views return them as decimals."""
+    if not t.get('numbers_as_text'):
+        return columns
+    out = []
+    for name, field, part, typ, note in columns:
+        if sql_base(typ) == 'decimal':
+            nn = ' NOT NULL' if 'NOT NULL' in typ else ''
+            logical = typ.replace(' NOT NULL', '')
+            note = (note + '; ' if note else '') + f'number as text, {logical} in the view'
+            typ = 'nvarchar(50)' + nn
+        out.append((name, field, part, typ, note))
+    return out
+
+
 def column_lines(table, columns, width):
     out = []
     for name, _f, _p, typ, note in columns:
@@ -679,7 +700,7 @@ def create_table(table, columns, mode, parent=None):
 def table_sql(t, mode):
     table, lines = t['table'], []
     lines += [f'-- {"-" * 75}', f"-- {t['record']}", f'-- {"-" * 75}']
-    body, ind = create_table(table, t['columns'], mode)
+    body, ind = create_table(table, stored(t, t['columns']), mode)
     lines += body
     lines.append(f'{ind}CREATE NONCLUSTERED INDEX IX_{table}_id ON dbo.{table} (id)'
                  + (' INCLUDE (lastModifiedDate);' if LAST_MODIFIED in t['columns'] else ';'))
@@ -695,7 +716,7 @@ def child_sql(t, ch, mode):
     parent = {'table': t['table'], 'record': t['record'], 'id_col': t['record'] + 'Id'}
     what = f"one row per selected {ch['field']}" if ch['kind'] == 'refs' else 'one row per line'
     lines = [f"-- {t['record']}/{ch['field']}/items -> dbo.{child}: {what}"]
-    body, ind = create_table(child, ch['columns'], mode, parent)
+    body, ind = create_table(child, stored(t, ch['columns']), mode, parent)
     lines += body
     lines.append(f'{ind}CREATE NONCLUSTERED INDEX IX_{child}_BPA_ParentID ON dbo.{child} (BPA_ParentID);')
     lines.append(f"{ind}CREATE NONCLUSTERED INDEX IX_{child}_{parent['id_col']} ON dbo.{child} ({parent['id_col']}, {ch['index']});")
@@ -786,7 +807,15 @@ BEGIN
     END
     ELSE
     BEGIN
-        IF @have <> @typ
+        IF @have <> @typ AND @have LIKE N'decimal(%' AND @typ LIKE N'nvarchar(%'
+        BEGIN
+            -- number column -> text column (decimal comma from the connector): lossless
+            SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@tbl) + N' ALTER COLUMN ' + QUOTENAME(@col) + N' ' + @typ
+                     + IIF(@have_nn = 1, N' NOT NULL', N' NULL') + N';';
+            EXEC sys.sp_executesql @sql;
+            PRINT N'Changed  ' + @tbl + N'.' + @col + N' ' + @have + N' -> ' + @typ;
+        END
+        ELSE IF @have <> @typ
             PRINT N'TYPE     ' + @tbl + N'.' + @col + N' is ' + @have + N', spec ' + @typ + N' (not changed)';
         IF @nn = 1 AND @have_nn = 0
             PRINT N'NULL     ' + @tbl + N'.' + @col + N' allows NULL, spec NOT NULL (not changed)';
@@ -821,10 +850,10 @@ def alter_script(group):
     what = 'NetSuite master data' if group == 'masterdata' else 'NetSuite vendor bill'
     rows = []
     for t in tables:
-        groups = [(t['table'], [], t['columns'])]
+        groups = [(t['table'], [], stored(t, t['columns']))]
         for ch in t.get('children', []):
             groups.append((f"{t['table']}_{ch['suffix']}",
-                           [(t['record'] + 'Id', None, None, 'nvarchar(100) NOT NULL', '')], ch['columns']))
+                           [(t['record'] + 'Id', None, None, 'nvarchar(100) NOT NULL', '')], stored(t, ch['columns'])))
         for table, parent_cols, columns in groups:
             for name, typ, default in BPA_COLUMNS:
                 rows.append((table, name, typ, default))
@@ -837,6 +866,8 @@ def alter_script(group):
              '    1. Creates a child table that does not exist yet (full definition).',
              '    2. Adds every column that is missing, as NULL (also the ones that are',
              '       NOT NULL in the spec: existing rows have no value for them).',
+             '       Changes decimal columns that the spec stores as text to nvarchar(50)',
+             '       (numbers with a decimal comma; lossless). The vw_ views type them.',
              '    3. Reports (PRINT), without changing anything: columns whose type differs',
              '       from the spec, columns that should be NOT NULL, and columns that are not',
              '       in the spec. Change those by hand after checking the data.',
@@ -870,6 +901,45 @@ def alter_script(group):
                     f"{1 if 'NOT NULL' in typ else 0}, {dn}, {dv})")
     lines.append(',\n'.join(vals) + ';')
     return '\n'.join(lines) + '\n' + ALTER_BODY + '\n'
+
+
+def views_script(group):
+    """Typed views over the tables: numbers stored as text are converted to decimal."""
+    tables = [t for t in TABLES if t['group'] == group and t.get('numbers_as_text')]
+    lines = ['/*',
+             '    Foundation Group - typed views over the NetSuite staging tables whose number',
+             '    columns are stored as text (the connector writes numbers with the decimal',
+             "    separator of the server it runs on, e.g. 907,5).", '',
+             "    Each view returns every column of its table; number columns are converted with",
+             "    TRY_CONVERT(decimal(p,s), REPLACE(<column>, ',', '.')), with a fallback through",
+             "    float for scientific notation (1E-05). Replacing ',' is safe: the connector",
+             '    never writes a thousands separator. A value that still does not convert',
+             '    becomes NULL; find those with the check query at the end.', '',
+             '    Read the data through these views, not the tables.', '',
+             f'    Generated by tools/netsuite_masterdata.py sql views --group {group}.', '*/', 'GO']
+    checks = []
+    for t in tables:
+        groups = [(t['table'], [], t['columns'])]
+        for ch in t.get('children', []):
+            groups.append((f"{t['table']}_{ch['suffix']}", [t['record'] + 'Id'], ch['columns']))
+        for table, parent_cols, columns in groups:
+            view = 'vw_' + table[len('tb_'):] if table.startswith('tb_') else 'vw_' + table
+            sel = [name for name, _t, _d in BPA_COLUMNS] + parent_cols
+            exprs = [f'    {c}' for c in sel]
+            for name, _f, _p, typ, _n in columns:
+                if sql_base(typ) == 'decimal':
+                    logical = typ.replace(' NOT NULL', '')
+                    conv = (f"COALESCE(TRY_CONVERT({logical}, REPLACE({name}, N',', N'.')), "
+                            f"TRY_CONVERT({logical}, TRY_CONVERT(float, REPLACE({name}, N',', N'.'))))")
+                    exprs.append(f"    {name} = {conv}")
+                    checks.append(f"SELECT N'{table}' AS tbl, N'{name}' AS col, BPA_EntryID, {name} AS value "
+                                  f"FROM dbo.{table} WHERE {name} IS NOT NULL AND {conv} IS NULL")
+                else:
+                    exprs.append(f'    {name}')
+            lines += [f'CREATE OR ALTER VIEW dbo.{view}', 'AS', 'SELECT', ',\n'.join(exprs),
+                      f'FROM dbo.{table};', 'GO', '']
+    lines += ['/* Check: values that do not convert (should return no rows)', '\nUNION ALL\n'.join(checks) + ';', '*/']
+    return '\n'.join(lines) + '\n'
 
 
 # --------------------------------------------------------------------------- validation
@@ -1140,8 +1210,14 @@ def validate(args):
         cat = load_catalog(cat_path, rec) if cat_path and os.path.exists(cat_path) else None
         bod_path = os.path.join(args.bod_dir, t['bod']) if t.get('bod') else None
         bod = bod_values(bod_path) if bod_path else None
-        out_path = os.path.join(args.bod_dir, t['output']) if t.get('output') else None
-        output = load_output(out_path, rec) if out_path else None
+        out_paths = [os.path.join(args.bod_dir, f) for f in t.get('output', [])]
+        output = None
+        for op in out_paths:
+            part = load_output(op, rec)
+            output = output or {'': {}}
+            for sub, fields in part.items():
+                for k, vs in fields.items():
+                    output.setdefault(sub, {}).setdefault(k, []).extend(vs)
 
         groups = [(t['table'], None, t['columns'], rest, set(bod) if bod is not None else None, bod,
                    output[''] if output else None)]
@@ -1228,12 +1304,16 @@ def validate(args):
             commas = sorted({k for sub in output.values() for k, vs in sub.items()
                              if any(re.fullmatch(r'-?\d+,\d+', v) for v in vs)})
             report += ['', 'Connector output fields with a value that are not stored:', ''] + (notes or ['- none'])
-            report += ['', 'Columns not in the connector output sample (not selected in the connector object, '
-                       'or empty in every record of the sample):', '']
+            report += ['', 'Columns not in any connector output sample (not selected, or empty in every '
+                       'record of the samples):', '']
             report += [f'- {m}' for m in missing_in_output] or ['- none']
             # the same record in the BOD and the output: a value in NetSuite that the
             # connector did not return means the field is not selected in the connector object
-            same = load_output(out_path, rec, bod.get('id')) if bod else None
+            same = None
+            for op in (out_paths if bod else []):
+                same = load_output(op, rec, bod.get('id'))
+                if same['']:
+                    break
             if same and same['']:
                 not_selected = []
                 pairs = [('', t['columns'], bod)]
@@ -1248,12 +1328,14 @@ def validate(args):
                         if (values or {}).get(field.lower()) and key not in got:
                             where = f'{sub}/items/' if sub else ''
                             not_selected.append(f"- `{where}{field}` (NetSuite value `{values[field.lower()][:30]}`)")
-                report += ['', f"Record {bod['id']} is in both the BOD and the output. Fields with a value in "
-                           'NetSuite that the connector did not return, so **not selected in the connector '
-                           'object**:', ''] + (not_selected or ['- none'])
+                report += ['', f"Record {bod['id']} is in both the BOD and an output sample. Fields with a value "
+                           'in NetSuite that are not in that output (not selected, or dropped between the '
+                           'connector and the task output):', ''] + (not_selected or ['- none'])
             if commas:
-                report += ['', f"**Decimal comma** in the output ({', '.join(commas)}): make sure the "
-                           'database step converts `37,2` to 37.20 (not 372 or an error).']
+                how = ('the number columns are stored as text and converted in the vw_ views'
+                       if t.get('numbers_as_text') else
+                       'make sure the database step converts `37,2` to 37.20 (not 372 or an error)')
+                report += ['', f"**Decimal comma** in the output ({', '.join(commas)}): {how}."]
 
     head = ['# Foundation Group NetSuite tables: validation report', '',
             'Generated by `tools/netsuite_masterdata.py validate`. Errors: '
@@ -1310,10 +1392,10 @@ def parse_ddl(text):
 def check_ddl(args):
     spec = {}
     for t in TABLES:
-        spec[t['table'].lower()] = (t['table'], t['columns'], None)
+        spec[t['table'].lower()] = (t['table'], stored(t, t['columns']), None)
         for ch in t.get('children', []):
             spec[f"{t['table']}_{ch['suffix']}".lower()] = (
-                f"{t['table']}_{ch['suffix']}", ch['columns'], t['record'] + 'Id')
+                f"{t['table']}_{ch['suffix']}", stored(t, ch['columns']), t['record'] + 'Id')
     found = {}
     for path in args.files:
         found.update(parse_ddl(open(path, encoding='utf-8-sig').read()))
@@ -1344,7 +1426,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='cmd', required=True)
     s = sub.add_parser('sql')
-    s.add_argument('which', choices=['full', 'children', 'alter'], nargs='?', default='full')
+    s.add_argument('which', choices=['full', 'children', 'alter', 'views'], nargs='?', default='full')
     s.add_argument('--group', choices=['masterdata', 'vendorbill'], default='masterdata')
     v = sub.add_parser('validate')
     v.add_argument('--export', help='NetSuite connector BusinessObjects export (REST metadata)')
@@ -1357,7 +1439,9 @@ def main():
     c.add_argument('files', nargs='+')
     args = ap.parse_args()
     if args.cmd == 'sql':
-        sys.stdout.write(alter_script(args.group) if args.which == 'alter' else sql_script(args.which, args.group))
+        sys.stdout.write(alter_script(args.group) if args.which == 'alter' else
+                         views_script(args.group) if args.which == 'views' else
+                         sql_script(args.which, args.group))
         return 0
     if args.cmd == 'check-ddl':
         return check_ddl(args)
