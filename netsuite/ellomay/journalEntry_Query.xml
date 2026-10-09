@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Journal entries, same pattern as Invoice_Query / vendorBill_Query: one row per
+  journal (mainline), incremental on lastmodifieddate, no posting-period filter.
+  Journals have no customer/vendor, due date, open amount or header total:
+  - entity, customer/vendor and IBAN live on the lines, so they're not selected here.
+  - journal_total = sum of the debit lines (in transaction currency).
+  recordtype 'journalentry' only; intercompany journals ('intercompanyjournalentry',
+  'advintercompanyjournalentry') and statistical journals are excluded.
+-->
+<query>
+<q>SELECT t.id AS journal_entry_id, t.tranid AS journal_entry_number, TO_CHAR(t.trandate, 'YYYY-MM-DD') AS journal_date, TO_CHAR(t.reversaldate, 'YYYY-MM-DD') AS reversal_date, t.memo AS memo, (SELECT SUM(l.debitforeignamount) FROM transactionLine l WHERE l.transaction = t.id) AS journal_total, t.currency AS currency_id, BUILTIN.DF(t.currency) AS currency_name, t.exchangerate AS exchange_rate, tl.subsidiary AS subsidiary_id, BUILTIN.DF(tl.subsidiary) AS subsidiary_name, t.postingperiod AS posting_period_id, BUILTIN.DF(t.postingperiod) AS posting_period_name, t.status AS status_code, BUILTIN.DF(t.status) AS status_name, t.approvalstatus AS approval_status_id, BUILTIN.DF(t.approvalstatus) AS approval_status_name, TO_CHAR(t.lastmodifieddate, 'YYYY-MM-DD HH24:MI:SS') AS last_modified FROM transaction t JOIN transactionLine tl ON tl.transaction = t.id AND tl.mainline = 'T' WHERE t.recordtype = 'journalentry' AND t.lastmodifieddate > TO_DATE('$LastModifiedDate$', 'YYYY-MM-DD HH24:MI:SS') ORDER BY t.id</q>
+  <limit>1000</limit>
+  <offset>0</offset>
+</query>
