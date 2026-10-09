@@ -28,6 +28,10 @@
     warning, not an error; if fn_Bank_Match needs the bank account row, the
     function returns nothing and the result shows 'no result'.
 
+    @VendorAsIs = 1 tests a real bank transaction for scenario 1: the vendor row
+    is not overwritten and no vendor bill is picked; set @VendorEntry to that
+    transaction's BPA_EntryID.
+
     Remove the hard-coded SET @IBAN / @Description / @Amount lines from
     fn_Bank_Match first, or both rows get the same values.
 */
@@ -37,6 +41,7 @@ SET XACT_ABORT ON;
 -- ===== Fill in (NULL = pick automatically) =====
 DECLARE @VendorEntry   uniqueidentifier = NULL;
 DECLARE @JournalEntry  uniqueidentifier = NULL;
+DECLARE @VendorAsIs    bit              = 0;     -- 1 = test @VendorEntry with its own IBAN / Description / Amount
 
 DECLARE @DummyIBAN_Journal  varchar(33)  = 'NL00TEST0000000002';
 DECLARE @JournalDescription varchar(255) = 'TEST journal entry - no match';
@@ -47,6 +52,9 @@ DECLARE @JournalCurrency    varchar(20)  = 'EUR';
 DECLARE @msg nvarchar(2048);
 
 -- ---------- Pick the two rows ----------
+IF @VendorAsIs = 1 AND @VendorEntry IS NULL
+    THROW 50003, N'@VendorAsIs = 1 needs @VendorEntry: the BPA_EntryID of the real transaction.', 1;
+
 IF @VendorEntry IS NULL
     SELECT TOP (1) @VendorEntry = t.BPA_EntryID
     FROM tb_Bank_Transactions t
@@ -102,6 +110,12 @@ IF EXISTS (SELECT 1 FROM tb_Netsuite_Invoice i
 DECLARE @V_IBAN varchar(33), @V_VendorID nvarchar(50), @V_BillID nvarchar(50),
         @V_BillNo varchar(255), @V_Amount float, @V_Currency varchar(20);
 
+IF @VendorAsIs = 1
+    SELECT @V_IBAN = t.IBAN, @V_BillNo = t.Description, @V_Amount = t.Amount, @V_Currency = t.Currency,
+           @V_VendorID = N'(as is)', @V_BillID = N'(as is)'
+    FROM tb_Bank_Transactions t
+    WHERE t.BPA_EntryID = @VendorEntry;
+ELSE
 SELECT TOP (1)
        @V_IBAN     = b.iban,
        @V_VendorID = v.vendor_id,
@@ -146,10 +160,11 @@ ELSE
     WHERE t.BPA_EntryID IN (@VendorEntry, @JournalEntry)
       AND NOT EXISTS (SELECT 1 FROM dbo.tb_Bank_Transactions_TestBackup b WHERE b.BPA_EntryID = t.BPA_EntryID);
 
-UPDATE tb_Bank_Transactions
-SET IBAN = @V_IBAN, Description = @V_BillNo, Amount = @V_Amount, Currency = @V_Currency,
-    Kenmerk = NULL, Betalingskenmerk = NULL, Incassant = NULL, Machtiging = NULL
-WHERE BPA_EntryID = @VendorEntry;
+IF @VendorAsIs = 0
+    UPDATE tb_Bank_Transactions
+    SET IBAN = @V_IBAN, Description = @V_BillNo, Amount = @V_Amount, Currency = @V_Currency,
+        Kenmerk = NULL, Betalingskenmerk = NULL, Incassant = NULL, Machtiging = NULL
+    WHERE BPA_EntryID = @VendorEntry;
 
 UPDATE tb_Bank_Transactions
 SET IBAN = @DummyIBAN_Journal, Description = @JournalDescription, Amount = @JournalAmount, Currency = @JournalCurrency,
