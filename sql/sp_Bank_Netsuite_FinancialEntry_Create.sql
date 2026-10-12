@@ -27,7 +27,10 @@ GO
 
     externalId = 'BANK-<own IBAN>-<bank entry reference>', so NetSuite refuses a second copy.
 
-    Columns marked "-- CHECK" are assumed (table definition not seen yet).
+    The NetSuite tables have id nvarchar(100) NOT NULL without a default: it is sent as ''
+    and filled with the NetSuite internal ID when the record has been created.
+
+    Columns marked "-- CHECK" are assumed (tb_Netsuite_CustomerPayment_Apply definition not seen yet).
 
     Run: EXEC sp_Bank_Netsuite_FinancialEntry_Create '89'
 */
@@ -70,6 +73,7 @@ SELECT
 ,	CAST(t.Matched_ReferenceXML AS xml)                             AS Matched_ReferenceXML
 ,	LEFT(COALESCE(t.Description, t.Kenmerk, t.Betalingskenmerk, ''), 250) AS Memo
 ,	'BANK-' + t.BPA_Origin + '-' + t.BPA_Reference                  AS ExternalID
+,	'sp_Bank_Netsuite_FinancialEntry_Create'                         AS Creator
 ,	bank.Company                                                    AS SubsidiaryID
 ,	bank.GLCodeBank                                                 AS BankAccountID
 ,	bank.DefaultGLCodeCreditor                                      AS APAccountID
@@ -83,7 +87,7 @@ INTO #t
 FROM tb_Bank_Transactions t
 LEFT JOIN vw_Bank_BankAccounts bank
 	ON bank.Bankaccount = t.BPA_Origin COLLATE database_default
-LEFT JOIN tb_Netsuite_Currency cur                                  -- CHECK: id + ISO code column
+LEFT JOIN tb_Netsuite_Currency cur
 	ON cur.symbol = t.Currency
 OUTER APPLY (
 	SELECT TOP 1 v.vendor_bill_id
@@ -92,7 +96,7 @@ OUTER APPLY (
 		AND LTRIM(RTRIM(v.vendor_bill_number)) = LTRIM(RTRIM(t.Matched_Reference))
 ) vb
 OUTER APPLY (
-	SELECT TOP 1 i.invoice_id                                       -- CHECK: invoice internal ID column
+	SELECT TOP 1 i.invoice_id
 	FROM tb_Netsuite_Invoice i
 	WHERE i.customer_id = t.Matched_Debtor
 		AND LTRIM(RTRIM(i.invoice_number)) = LTRIM(RTRIM(t.Matched_Reference))
@@ -131,73 +135,73 @@ BEGIN TRANSACTION;
 INSERT INTO tb_Netsuite_VendorPayment
 (
 	BPA_EntryID, BPA_Origin, BPA_Direction, BPA_Action, BPA_Status, BPA_Company,
-	BPA_Reference, BPA_Orig_Entryid,
+	BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator, id,
 	externalId, entityId, subsidiaryId, accountId, apAcctId, currencyId, exchangeRate,
 	tranDate, memo, toBeEmailed, toBePrinted
 )
 SELECT
 	NewEntryID, BPA_Origin, 'TO', 'I', 0, @BPA_Company,
-	ExternalID, BPA_EntryID,
+	LEFT(ExternalID, 50), BPA_EntryID, Creator, '',
 	ExternalID, Matched_Creditor, SubsidiaryID, BankAccountID, APAccountID, CurrencyID,
 	CASE WHEN Currency = 'EUR' THEN 1.0 END,
-	Bookdate, Memo, 'False', 'False'
+	CONVERT(varchar(10), Bookdate, 23), Memo, 0, 0
 FROM #t
 WHERE Category = 'VENDORPAYMENT';
 
 INSERT INTO tb_Netsuite_VendorPayment_Apply
 (
 	BPA_EntryID, BPA_ParentID, BPA_Origin, BPA_Direction, BPA_Action, BPA_Status, BPA_Company,
-	BPA_Reference, BPA_Orig_Entryid,
+	BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator, id,
 	line, doc_id, amount, apply
 )
 SELECT
 	NEWID(), NewEntryID, BPA_Origin, 'TO', 'I', 0, @BPA_Company,
-	ExternalID, BPA_EntryID,
-	0, VendorBillID, ABS(Amount), 'True'
+	LEFT(ExternalID, 50), BPA_EntryID, Creator, '',
+	0, VendorBillID, ABS(Amount), 1
 FROM #t
 WHERE Category = 'VENDORPAYMENT';
 
 -- 4b. Customer payments: one payment, one apply line per invoice
-INSERT INTO tb_Netsuite_CustomerPayment                            -- CHECK: column names
+INSERT INTO tb_Netsuite_CustomerPayment
 (
 	BPA_EntryID, BPA_Origin, BPA_Direction, BPA_Action, BPA_Status, BPA_Company,
-	BPA_Reference, BPA_Orig_Entryid,
-	externalId, customerId, subsidiaryId, accountId, arAcctId, currencyId, exchangeRate,
+	BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator, id,
+	externalId, customerId, subsidiaryId, accountId, aracctId, currencyId, exchangeRate,
 	payment, tranDate, memo
 )
 SELECT
 	NewEntryID, BPA_Origin, 'TO', 'I', 0, @BPA_Company,
-	ExternalID, BPA_EntryID,
+	LEFT(ExternalID, 50), BPA_EntryID, Creator, '',
 	ExternalID, Matched_Debtor, SubsidiaryID, BankAccountID, ARAccountID, CurrencyID,
 	CASE WHEN Currency = 'EUR' THEN 1.0 END,
 	Amount, Bookdate, Memo
 FROM #t
 WHERE Category = 'CUSTOMERPAYMENT';
 
-INSERT INTO tb_Netsuite_CustomerPayment_Apply                      -- CHECK: column names
+INSERT INTO tb_Netsuite_CustomerPayment_Apply                      -- CHECK: same layout as VendorPayment_Apply assumed
 (
 	BPA_EntryID, BPA_ParentID, BPA_Origin, BPA_Direction, BPA_Action, BPA_Status, BPA_Company,
-	BPA_Reference, BPA_Orig_Entryid,
+	BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator, id,
 	line, doc_id, amount, apply
 )
 -- One invoice (SalesInvoice / SalesinvoiceAmount): the whole amount
 SELECT
 	NEWID(), x.NewEntryID, x.BPA_Origin, 'TO', 'I', 0, @BPA_Company,
-	x.ExternalID, x.BPA_EntryID,
-	0, x.InvoiceID, x.Amount, 'True'
+	LEFT(x.ExternalID, 50), x.BPA_EntryID, x.Creator, '',
+	0, x.InvoiceID, x.Amount, 1
 FROM #t x
 WHERE x.Category = 'CUSTOMERPAYMENT' AND x.InvoiceID IS NOT NULL
 UNION ALL
 -- A list of invoices (SalesinvoiceList...): each invoice for its open amount
 SELECT
 	NEWID(), x.NewEntryID, x.BPA_Origin, 'TO', 'I', 0, @BPA_Company,
-	x.ExternalID, x.BPA_EntryID,
+	LEFT(x.ExternalID, 50), x.BPA_EntryID, x.Creator, '',
 	ROW_NUMBER() OVER (PARTITION BY x.BPA_EntryID ORDER BY i.invoice_id) - 1,
-	i.invoice_id, i.amount_open, 'True'
+	i.invoice_id, i.amount_open, 1
 FROM #t x
 CROSS APPLY x.Matched_ReferenceXML.nodes('/Invoices/invoice_number') n(c)
 CROSS APPLY (
-	SELECT TOP 1 inv.invoice_id, inv.amount_open                   -- CHECK: invoice internal ID column
+	SELECT TOP 1 inv.invoice_id, inv.amount_open
 	FROM tb_Netsuite_Invoice inv
 	WHERE inv.customer_id = x.Matched_Debtor
 		AND LTRIM(RTRIM(inv.invoice_number)) = n.c.value('.', 'nvarchar(100)')
@@ -205,31 +209,31 @@ CROSS APPLY (
 WHERE x.Category = 'CUSTOMERPAYMENT' AND x.InvoiceID IS NULL;
 
 -- 4c. Journal entries: bank line + offset line
-INSERT INTO tb_Netsuite_JournalEntry                               -- CHECK: column names
+INSERT INTO tb_Netsuite_JournalEntry
 (
 	BPA_EntryID, BPA_Origin, BPA_Direction, BPA_Action, BPA_Status, BPA_Company,
-	BPA_Reference, BPA_Orig_Entryid,
+	BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator, id,
 	externalId, subsidiaryId, currencyId, exchangeRate, tranDate, memo
 )
 SELECT
 	NewEntryID, BPA_Origin, 'TO', 'I', 0, @BPA_Company,
-	ExternalID, BPA_EntryID,
+	LEFT(ExternalID, 50), BPA_EntryID, Creator, '',
 	ExternalID, SubsidiaryID, CurrencyID,
 	CASE WHEN Currency = 'EUR' THEN 1.0 END,
 	Bookdate, Memo
 FROM #t
 WHERE Category = 'JOURNALENTRY';
 
-INSERT INTO tb_Netsuite_JournalEntry_Line                          -- CHECK: table + column names
+INSERT INTO tb_Netsuite_JournalEntry_Line
 (
 	BPA_EntryID, BPA_ParentID, BPA_Origin, BPA_Direction, BPA_Action, BPA_Status, BPA_Company,
-	BPA_Reference, BPA_Orig_Entryid,
+	BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator, id,
 	line, accountId, debit, credit, entityId, memo
 )
 -- Bank line: money in = debit, money out = credit
 SELECT
 	NEWID(), NewEntryID, BPA_Origin, 'TO', 'I', 0, @BPA_Company,
-	ExternalID, BPA_EntryID,
+	LEFT(ExternalID, 50), BPA_EntryID, Creator, '',
 	0, BankAccountID,
 	CASE WHEN Amount > 0 THEN Amount END,
 	CASE WHEN Amount < 0 THEN -Amount END,
@@ -240,7 +244,7 @@ UNION ALL
 -- Offset line: the opposite side, on the matched GL account (with the vendor/customer when known)
 SELECT
 	NEWID(), NewEntryID, BPA_Origin, 'TO', 'I', 0, @BPA_Company,
-	ExternalID, BPA_EntryID,
+	LEFT(ExternalID, 50), BPA_EntryID, Creator, '',
 	1, OffsetAccountID,
 	CASE WHEN Amount < 0 THEN -Amount END,
 	CASE WHEN Amount > 0 THEN Amount END,
