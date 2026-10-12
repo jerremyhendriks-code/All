@@ -17,7 +17,7 @@ FROM tb_Bank_Transactions b
 JOIN tb_Rabobank_Transaction r ON r.BPA_EntryID = b.BPA_Orig_Entryid
 WHERE b.IBAN = b.BPA_Origin
   AND r.creditorAccount_iban = r.BPA_Origin
-  AND ISNULL(r.debtorAccount_iban, r.debtorAccount_bban) IS NOT NULL;
+  AND ISNULL(r.debtorAccount_iban, r.debtorAccount_bban) <> r.BPA_Origin;  -- skip own bank costs
 GO
 
 -- Step 2: repair
@@ -29,4 +29,4 @@ GO
 -- JOIN tb_Rabobank_Transaction r ON r.BPA_EntryID = b.BPA_Orig_Entryid
 -- WHERE b.IBAN = b.BPA_Origin
 --   AND r.creditorAccount_iban = r.BPA_Origin
---   AND ISNULL(r.debtorAccount_iban, r.debtorAccount_bban) IS NOT NULL;
+--   AND ISNULL(r.debtorAccount_iban, r.debtorAccount_bban) <> r.BPA_Origin;  -- skip own bank costs
