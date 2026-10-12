@@ -4,15 +4,11 @@
 
     Nothing is written to the NetSuite tables and BPA_Status stays 0, so
     sp_Bank_Netsuite_FinancialEntry_Create can pick it up later.
-
-    @OffsetAccountID is only used when the function finds no GL code
-    (e.g. bank costs: no vendor, no customer).
 */
 USE [BPAStaging]
 GO
 
 DECLARE @BankTransactionID uniqueidentifier = '7A8EE1D3-C1C3-F111-9386-00155D0A0313';  -- "Kosten", -39.32
-DECLARE @OffsetAccountID   varchar(9)       = NULL;  -- NetSuite internal ID of e.g. the bank costs account
 
 -- Step 1: what does the function say?
 SELECT t.BPA_EntryID, t.Amount, t.Description, m.*
@@ -24,7 +20,7 @@ WHERE t.BPA_EntryID = @BankTransactionID;
 UPDATE t
 SET Matched_NewCustomer  = m.NewCustomer
 ,   Matched_typematch    = m.typematch
-,   Matched_GLCode       = ISNULL(m.GLCode, @OffsetAccountID)
+,   Matched_GLCode       = m.GLCode
 ,   Matched_Creditor     = m.vendor_id
 ,   Matched_Debtor       = m.customer_id
 ,   Matched_Costcenter   = m.Costcenter

@@ -13,7 +13,8 @@
     7. Customer found: find the open invoice (by number, by amount, by a list of
        invoices that adds up to the amount).
     8. Still both a vendor and a customer: negative amount = vendor, positive = customer.
-    9. No GL code yet: use the customer default, else the journal's GL code.
+    9. No GL code yet: customer/vendor default, else the bank account's "unknown" GL account
+       (UnknownDebtor for money in, UnknownCreditor for money out), else the journal's GL code.
 
     Amounts are compared to the cent (difference < 0.005) instead of with "=",
     because @Amount is a float. Vendor bills are compared with ABS(@Amount),
@@ -86,6 +87,8 @@ BEGIN
 		@Journal nvarchar(20),
 		@DefaultGLCodevendor_id nvarchar(9),
 		@DefaultGLCodecustomer_id nvarchar(9),
+		@UnknownGLCodeIn nvarchar(100),
+		@UnknownGLCodeOut nvarchar(100),
 		@WorkflowNumber int,
 		@WorkflowID uniqueidentifier,
 		@ReferenceXML xml,
@@ -106,6 +109,8 @@ BEGIN
 	,	@DefaultGLCodecustomer_id	= DefaultGLCodeDebtor
 	,	@CompanyID					= CompanyID
 	,	@Company					= Company
+	,	@UnknownGLCodeIn			= UnknownDebtor
+	,	@UnknownGLCodeOut			= UnknownCreditor
 	FROM vw_Bank_BankAccounts
 	WHERE Bankaccount = @BankAccount
 
@@ -283,11 +288,15 @@ BEGIN
 	IF @GLCode IS NULL AND @vendor_id IS NOT NULL
 		SET @GLCode = @DefaultGLCodevendor_id
 
+	-- Nothing recognised: the bank account's "unknown" GL account (money in / money out)
+	IF @GLCode IS NULL
+		SET @GLCode = CASE WHEN @Amount > 0 THEN @UnknownGLCodeIn ELSE @UnknownGLCodeOut END
+
 	IF @GLCode IS NULL
 		SELECT @GLCode = glcode
 		FROM vw_Bank_Journal
-		WHERE CompanyID = @CompanyID
-			AND Journal = @Journal
+		WHERE Journal = @Journal
+			AND (CompanyID = @CompanyID OR @CompanyID IS NULL)
 
 	INSERT INTO @retreport
 	(
