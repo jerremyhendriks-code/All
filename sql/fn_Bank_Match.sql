@@ -7,6 +7,7 @@
     3. Look up the other party's IBAN in tb_Netsuite_Bank_account_details
        -> one vendor and/or one customer.
     4. Look for an invoice number in the description -> customer.
+       No vendor yet: look for a vendor bill number in the description -> vendor.
     5. Vendor found: find the open vendor bill (by number in description, else by amount).
     6. No customer yet: find a sales invoice by number in description / payment reference.
     7. Customer found: find the open invoice (by number, by amount, by a list of
@@ -127,6 +128,13 @@ BEGIN
 	FROM tb_Netsuite_Invoice i
 	WHERE LTRIM(RTRIM(i.invoice_number)) <> ''
 		AND @Description LIKE '%' + LTRIM(RTRIM(i.invoice_number)) + '%'
+
+	-- 4b. No vendor from the IBAN: look for a vendor bill number in the description
+	IF @vendor_id IS NULL
+		SELECT @vendor_id = v.vendor_id
+		FROM tb_Netsuite_vendorBill v
+		WHERE LTRIM(RTRIM(v.vendor_bill_number)) <> ''
+			AND @Description LIKE '%' + LTRIM(RTRIM(v.vendor_bill_number)) + '%'
 
 	-- 5. Vendor found: find the vendor bill
 	IF @vendor_id IS NOT NULL
