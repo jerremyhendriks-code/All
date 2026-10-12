@@ -16,10 +16,10 @@ GO
 DECLARE @BankTransactionID uniqueidentifier = '7A8EE1D3-C1C3-F111-9386-00155D0A0313';
 
 -- NetSuite internal IDs
-DECLARE @SubsidiaryID    nvarchar(50) = '89';    -- GGG
+DECLARE @SubsidiaryID    nvarchar(50) = '93';    -- GGOT (owner of NL74RABO0317955799)
 DECLARE @CurrencyID      nvarchar(50) = '4';     -- EUR
-DECLARE @BankAccountID   nvarchar(50) = '3427';  -- GL account of our Rabobank account
-DECLARE @OffsetAccountID nvarchar(50) = NULL;    -- the other side, e.g. the bank costs account: FILL IN
+DECLARE @BankAccountID   nvarchar(50) = '3428';  -- Rabobank 0317 9557 99 GGOT Euro
+DECLARE @OffsetAccountID nvarchar(50) = '712';   -- Bank Charges (acctNumber 700001001)
 DECLARE @EntityID        nvarchar(50) = NULL;    -- vendor/customer on the offset line; NULL for bank costs
                                                  -- (required when the offset account is AP or AR)
 
