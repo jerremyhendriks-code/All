@@ -4,8 +4,8 @@
     Read-only: nothing is inserted or updated. Finds existing bank transactions
     (BPA_Status = 0) that are good candidates for each of the three scenarios:
 
-      1. VendorPayment   - IBAN belongs to exactly one vendor and the description
-                           contains a vendor_bill_number of that vendor
+      1. VendorPayment   - IBAN equals the vendor_iban of a vendor bill and the
+                           description contains that bill's vendor_bill_number
       2. CustomerPayment - description or betalingskenmerk contains an invoice_number
       3. JournalEntry    - IBAN unknown and no bill / invoice number found
 
@@ -27,31 +27,27 @@ DECLARE @Top     int         = 50;     -- rows per scenario
 ------------------------------------------------------------------------------
 -- 1. VendorPayment candidates
 ------------------------------------------------------------------------------
-;WITH vendor_iban AS (
-    -- Same rule as the engine: the IBAN must point to exactly one vendor
-    SELECT custrecord_2663_entity_iban AS iban, MAX(Vendorid) AS vendor_id
-    FROM tb_Netsuite_Bank_account_details
-    WHERE Vendorid IS NOT NULL
-    GROUP BY custrecord_2663_entity_iban
-    HAVING COUNT(DISTINCT Vendorid) = 1
+;WITH bank AS (
+    SELECT t.*, REPLACE(UPPER(t.IBAN), ' ', '') AS iban_norm
+    FROM tb_Bank_Transactions t
+    WHERE t.BPA_Status = 0
+      AND (@Company IS NULL OR t.BPA_Company = @Company)
 )
 SELECT TOP (@Top)
        'VendorPayment' AS scenario,
        t.BPA_EntryID, t.BPA_Company, t.Bookdate, t.IBAN, t.Amount, t.Currency, t.Description,
-       v.vendor_id, v.vendor_bill_id, v.vendor_bill_number, TRY_CAST(v.amount_open AS decimal(18,2)) AS amount_open, v.currency_name,
+       v.vendor_id, v.vendor_iban, v.vendor_bill_id, v.vendor_bill_number,
+       TRY_CAST(v.amount_open AS decimal(18,2)) AS amount_open, v.currency_name,
        CASE WHEN t.Amount = TRY_CAST(v.amount_open AS decimal(18,2))  THEN 'exact'
             WHEN -t.Amount = TRY_CAST(v.amount_open AS decimal(18,2)) THEN 'exact, sign flipped'
             ELSE 'differs' END AS amount_check,
        m.typematch, m.vendor_id AS engine_vendor_id, m.customer_id AS engine_customer_id,
        m.Reference AS engine_reference, RTRIM(m.GLCode) AS engine_glcode
-FROM tb_Bank_Transactions t
-JOIN vendor_iban b ON b.iban = t.IBAN
-JOIN tb_Netsuite_VendorBill v ON v.vendor_id = b.vendor_id
+FROM bank t
+JOIN tb_Netsuite_VendorBill v ON REPLACE(UPPER(v.vendor_iban), ' ', '') = t.iban_norm
                              AND LTRIM(RTRIM(v.vendor_bill_number)) <> ''
                              AND t.Description LIKE '%' + LTRIM(RTRIM(v.vendor_bill_number)) + '%'
 CROSS APPLY dbo.fn_Bank_Match('BANK', t.BPA_EntryID, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL) m
-WHERE t.BPA_Status = 0
-  AND (@Company IS NULL OR t.BPA_Company = @Company)
 ORDER BY CASE WHEN t.Amount = TRY_CAST(v.amount_open AS decimal(18,2)) OR -t.Amount = TRY_CAST(v.amount_open AS decimal(18,2)) THEN 0 ELSE 1 END, t.Bookdate DESC;
 
 ------------------------------------------------------------------------------
@@ -90,6 +86,8 @@ CROSS APPLY dbo.fn_Bank_Match('BANK', t.BPA_EntryID, NULL, NULL, NULL, NULL, NUL
 WHERE t.BPA_Status = 0
   AND (@Company IS NULL OR t.BPA_Company = @Company)
   AND NOT EXISTS (SELECT 1 FROM tb_Netsuite_Bank_account_details b WHERE b.custrecord_2663_entity_iban = t.IBAN)
+  AND NOT EXISTS (SELECT 1 FROM tb_Netsuite_VendorBill v
+                  WHERE REPLACE(UPPER(v.vendor_iban), ' ', '') = REPLACE(UPPER(t.IBAN), ' ', ''))
   AND NOT EXISTS (SELECT 1 FROM tb_Netsuite_VendorBill v
                   WHERE LTRIM(RTRIM(v.vendor_bill_number)) <> ''
                     AND t.Description LIKE '%' + LTRIM(RTRIM(v.vendor_bill_number)) + '%')
