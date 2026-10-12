@@ -13,6 +13,8 @@
     see straight away whether the engine agrees. Pick the transactions you want
     to use and put them in bank_match_test_cases.sql (step 2).
 
+    amount_open is read with TRY_CAST because the NetSuite tables store it as text.
+
     Requires the hard-coded debug lines (set @BPA_EntryID=..., set @IBAN=...,
     set @Description=..., set @Amount=...) to be removed from fn_Bank_Match:
     with them in place every transaction returns the same result.
@@ -36,9 +38,9 @@ DECLARE @Top     int         = 50;     -- rows per scenario
 SELECT TOP (@Top)
        'VendorPayment' AS scenario,
        t.BPA_EntryID, t.BPA_Company, t.Bookdate, t.IBAN, t.Amount, t.Currency, t.Description,
-       v.vendor_id, v.vendor_bill_id, v.vendor_bill_number, v.amount_open, v.currency_name,
-       CASE WHEN t.Amount = v.amount_open  THEN 'exact'
-            WHEN -t.Amount = v.amount_open THEN 'exact, sign flipped'
+       v.vendor_id, v.vendor_bill_id, v.vendor_bill_number, TRY_CAST(v.amount_open AS decimal(18,2)) AS amount_open, v.currency_name,
+       CASE WHEN t.Amount = TRY_CAST(v.amount_open AS decimal(18,2))  THEN 'exact'
+            WHEN -t.Amount = TRY_CAST(v.amount_open AS decimal(18,2)) THEN 'exact, sign flipped'
             ELSE 'differs' END AS amount_check,
        m.typematch, m.vendor_id AS engine_vendor_id, m.customer_id AS engine_customer_id,
        m.Reference AS engine_reference, RTRIM(m.GLCode) AS engine_glcode
@@ -50,7 +52,7 @@ JOIN tb_Netsuite_VendorBill v ON v.vendor_id = b.vendor_id
 CROSS APPLY dbo.fn_Bank_Match('BANK', t.BPA_EntryID, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL) m
 WHERE t.BPA_Status = 0
   AND (@Company IS NULL OR t.BPA_Company = @Company)
-ORDER BY CASE WHEN t.Amount = v.amount_open OR -t.Amount = v.amount_open THEN 0 ELSE 1 END, t.Bookdate DESC;
+ORDER BY CASE WHEN t.Amount = TRY_CAST(v.amount_open AS decimal(18,2)) OR -t.Amount = TRY_CAST(v.amount_open AS decimal(18,2)) THEN 0 ELSE 1 END, t.Bookdate DESC;
 
 ------------------------------------------------------------------------------
 -- 2. CustomerPayment candidates
@@ -58,11 +60,11 @@ ORDER BY CASE WHEN t.Amount = v.amount_open OR -t.Amount = v.amount_open THEN 0 
 SELECT TOP (@Top)
        'CustomerPayment' AS scenario,
        t.BPA_EntryID, t.BPA_Company, t.Bookdate, t.IBAN, t.Amount, t.Currency, t.Description, t.Betalingskenmerk,
-       i.customer_id, i.invoice_number, i.amount_open, i.currency_name,
+       i.customer_id, i.invoice_number, TRY_CAST(i.amount_open AS decimal(18,2)) AS amount_open, i.currency_name,
        CASE WHEN t.Description LIKE '%' + LTRIM(RTRIM(i.invoice_number)) + '%' THEN 'description'
             ELSE 'betalingskenmerk' END AS found_in,
        COUNT(*) OVER (PARTITION BY t.BPA_EntryID) AS invoices_found,
-       CASE WHEN t.Amount = i.amount_open THEN 'exact' ELSE 'differs' END AS amount_check,
+       CASE WHEN t.Amount = TRY_CAST(i.amount_open AS decimal(18,2)) THEN 'exact' ELSE 'differs' END AS amount_check,
        m.typematch, m.vendor_id AS engine_vendor_id, m.customer_id AS engine_customer_id,
        m.Reference AS engine_reference, CAST(m.ReferenceXML AS nvarchar(max)) AS engine_reference_xml,
        RTRIM(m.GLCode) AS engine_glcode
@@ -73,7 +75,7 @@ JOIN tb_Netsuite_Invoice i ON LTRIM(RTRIM(i.invoice_number)) <> ''
 CROSS APPLY dbo.fn_Bank_Match('BANK', t.BPA_EntryID, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL) m
 WHERE t.BPA_Status = 0
   AND (@Company IS NULL OR t.BPA_Company = @Company)
-ORDER BY CASE WHEN t.Amount = i.amount_open THEN 0 ELSE 1 END, invoices_found, t.Bookdate DESC;
+ORDER BY CASE WHEN t.Amount = TRY_CAST(i.amount_open AS decimal(18,2)) THEN 0 ELSE 1 END, invoices_found, t.Bookdate DESC;
 
 ------------------------------------------------------------------------------
 -- 3. JournalEntry candidates: unknown IBAN, no bill or invoice number
