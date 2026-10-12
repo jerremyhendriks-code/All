@@ -27,10 +27,8 @@ GO
 
     externalId = 'BANK-<own IBAN>-<bank entry reference>', so NetSuite refuses a second copy.
 
-    The NetSuite tables have id nvarchar(100) NOT NULL without a default: it is sent as ''
+    The NetSuite header tables have id nvarchar(100) NOT NULL without a default: it is sent as ''
     and filled with the NetSuite internal ID when the record has been created.
-
-    Columns marked "-- CHECK" are assumed (tb_Netsuite_CustomerPayment_Apply definition not seen yet).
 
     Run: EXEC sp_Bank_Netsuite_FinancialEntry_Create '89'
 */
@@ -151,12 +149,12 @@ WHERE Category = 'VENDORPAYMENT';
 INSERT INTO tb_Netsuite_VendorPayment_Apply
 (
 	BPA_EntryID, BPA_ParentID, BPA_Origin, BPA_Direction, BPA_Action, BPA_Status, BPA_Company,
-	BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator, id,
+	BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator,
 	line, doc_id, amount, apply
 )
 SELECT
 	NEWID(), NewEntryID, BPA_Origin, 'TO', 'I', 0, @BPA_Company,
-	LEFT(ExternalID, 50), BPA_EntryID, Creator, '',
+	LEFT(ExternalID, 50), BPA_EntryID, Creator,
 	0, VendorBillID, ABS(Amount), 1
 FROM #t
 WHERE Category = 'VENDORPAYMENT';
@@ -178,16 +176,16 @@ SELECT
 FROM #t
 WHERE Category = 'CUSTOMERPAYMENT';
 
-INSERT INTO tb_Netsuite_CustomerPayment_Apply                      -- CHECK: same layout as VendorPayment_Apply assumed
+INSERT INTO tb_Netsuite_CustomerPayment_Apply                      -- no id column here; document is docId
 (
 	BPA_EntryID, BPA_ParentID, BPA_Origin, BPA_Direction, BPA_Action, BPA_Status, BPA_Company,
-	BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator, id,
-	line, doc_id, amount, apply
+	BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator,
+	line, docId, amount, apply
 )
 -- One invoice (SalesInvoice / SalesinvoiceAmount): the whole amount
 SELECT
 	NEWID(), x.NewEntryID, x.BPA_Origin, 'TO', 'I', 0, @BPA_Company,
-	LEFT(x.ExternalID, 50), x.BPA_EntryID, x.Creator, '',
+	LEFT(x.ExternalID, 50), x.BPA_EntryID, x.Creator,
 	0, x.InvoiceID, x.Amount, 1
 FROM #t x
 WHERE x.Category = 'CUSTOMERPAYMENT' AND x.InvoiceID IS NOT NULL
@@ -195,7 +193,7 @@ UNION ALL
 -- A list of invoices (SalesinvoiceList...): each invoice for its open amount
 SELECT
 	NEWID(), x.NewEntryID, x.BPA_Origin, 'TO', 'I', 0, @BPA_Company,
-	LEFT(x.ExternalID, 50), x.BPA_EntryID, x.Creator, '',
+	LEFT(x.ExternalID, 50), x.BPA_EntryID, x.Creator,
 	ROW_NUMBER() OVER (PARTITION BY x.BPA_EntryID ORDER BY i.invoice_id) - 1,
 	i.invoice_id, i.amount_open, 1
 FROM #t x
@@ -227,13 +225,13 @@ WHERE Category = 'JOURNALENTRY';
 INSERT INTO tb_Netsuite_JournalEntry_Line
 (
 	BPA_EntryID, BPA_ParentID, BPA_Origin, BPA_Direction, BPA_Action, BPA_Status, BPA_Company,
-	BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator, id,
+	BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator,
 	line, accountId, debit, credit, entityId, memo
 )
 -- Bank line: money in = debit, money out = credit
 SELECT
 	NEWID(), NewEntryID, BPA_Origin, 'TO', 'I', 0, @BPA_Company,
-	LEFT(ExternalID, 50), BPA_EntryID, Creator, '',
+	LEFT(ExternalID, 50), BPA_EntryID, Creator,
 	0, BankAccountID,
 	CASE WHEN Amount > 0 THEN Amount END,
 	CASE WHEN Amount < 0 THEN -Amount END,
@@ -244,7 +242,7 @@ UNION ALL
 -- Offset line: the opposite side, on the matched GL account (with the vendor/customer when known)
 SELECT
 	NEWID(), NewEntryID, BPA_Origin, 'TO', 'I', 0, @BPA_Company,
-	LEFT(ExternalID, 50), BPA_EntryID, Creator, '',
+	LEFT(ExternalID, 50), BPA_EntryID, Creator,
 	1, OffsetAccountID,
 	CASE WHEN Amount < 0 THEN -Amount END,
 	CASE WHEN Amount > 0 THEN Amount END,
