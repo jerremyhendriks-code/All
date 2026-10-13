@@ -19,8 +19,8 @@
     exists, is open and belongs to that vendor. Only the number is made up, so it
     can't clash with anything; @TestAmount must not be more than what is really open
     (NetSuite then records a partial payment).
-    Defaults are the sandbox documents used in the earlier NetSuite payment tests;
-    check them before running.
+    By default the script picks an open bill and invoice from the staging tables
+    (the latest loaded row of each), so they exist in NetSuite.
 
     Every run uses new numbers and entryReferences (<run> = yyyyMMddHHmmss), so the
     script can be run again. Cleanup is at the bottom.
@@ -40,27 +40,22 @@ DECLARE @TestAmount    decimal(18, 2) = 10.00;          -- vendor payment and cu
 DECLARE @JournalAmount decimal(18, 2) = 12.34;          -- journal entry (money out)
 DECLARE @DummyIBAN     varchar(34)    = 'NL00TEST0000000001';
 
--- Real open vendor bill: GGG, bill 77777777, vendor 21705 Lucas Westra B.V.
-DECLARE @VB_BillID     nvarchar(100)  = N'37393';
-DECLARE @VB_VendorID   nvarchar(100)  = N'5733';
-DECLARE @VB_VendorName nvarchar(255)  = N'21705 Lucas Westra B.V.';
-DECLARE @VB_Subsidiary nvarchar(100)  = N'89';
-DECLARE @VB_CurrencyID nvarchar(100)  = N'4';           -- EUR
-
--- Real open invoice: customer 4044 (Italy 2). The customer scenario is not built yet;
--- for that scenario later the invoice must be in the same subsidiary as @OwnIBAN.
-DECLARE @INV_InvoiceID    nvarchar(100) = N'17544';
-DECLARE @INV_CustomerID   nvarchar(100) = N'4044';
-DECLARE @INV_CustomerName nvarchar(255) = N'BPA test customer';
-DECLARE @INV_Subsidiary   nvarchar(100) = N'45';
-DECLARE @INV_CurrencyID   nvarchar(100) = N'4';         -- EUR
+-- The real NetSuite documents the test bill / invoice point at.
+-- NULL = pick an open EUR one from staging: the bill in @Company (open amount >= @TestAmount),
+-- the invoice preferably in @Company. Or fill in an internal ID to use that document.
+DECLARE @VB_BillID     nvarchar(100)  = NULL;
+DECLARE @INV_InvoiceID nvarchar(100)  = NULL;
 -- ===================
 
 DECLARE @run      varchar(14) = FORMAT(GETDATE(), 'yyyyMMddHHmmss');
 DECLARE @BillNo   nvarchar(60) = N'BPATEST-VB-'  + @run;
 DECLARE @InvoiceNo nvarchar(60) = N'BPATEST-INV-' + @run;
 DECLARE @JournalDescription nvarchar(255) = N'BPA test bankkosten ' + @run;
-DECLARE @VB_Currency  nvarchar(100), @INV_Currency nvarchar(100), @msg nvarchar(2048);
+DECLARE @VB_VendorID nvarchar(100), @VB_VendorName nvarchar(255), @VB_Subsidiary nvarchar(100),
+        @VB_CurrencyID nvarchar(100), @VB_Currency nvarchar(100),
+        @INV_CustomerID nvarchar(100), @INV_CustomerName nvarchar(255), @INV_Subsidiary nvarchar(100),
+        @INV_CurrencyID nvarchar(100), @INV_Currency nvarchar(100),
+        @msg nvarchar(2048);
 
 -- ---------- Pre-checks ----------
 IF @OwnIBAN IS NULL
@@ -82,14 +77,88 @@ BEGIN
     THROW 50001, @msg, 1;
 END
 
+-- The real vendor bill: latest loaded row per bill, open, EUR, in @Company
+;WITH bill AS (
+    SELECT CAST(v.vendor_bill_id AS nvarchar(100))      AS vendor_bill_id,
+           CAST(v.vendor_id AS nvarchar(100))           AS vendor_id,
+           v.vendor_name,
+           CAST(v.subsidiary_id AS nvarchar(100))       AS subsidiary_id,
+           CAST(v.currency_id AS nvarchar(100))         AS currency_id,
+           TRY_CAST(v.amount_open AS decimal(18, 2))    AS amount_open,
+           ROW_NUMBER() OVER (PARTITION BY v.vendor_bill_id
+                              ORDER BY v.BPA_Syscreated DESC, v.BPA_EntryID DESC) AS rn
+    FROM tb_Netsuite_VendorBill v
+    WHERE v.vendor_bill_number NOT LIKE 'BPATEST-%'
+)
+SELECT TOP (1)
+       @VB_BillID     = b.vendor_bill_id,
+       @VB_VendorID   = b.vendor_id,
+       @VB_VendorName = b.vendor_name,
+       @VB_Subsidiary = b.subsidiary_id,
+       @VB_CurrencyID = b.currency_id,
+       @VB_Currency   = c.symbol
+FROM bill b
+JOIN tb_Netsuite_Currency c ON c.id = b.currency_id
+WHERE b.rn = 1
+  AND b.vendor_id IS NOT NULL
+  AND (   b.vendor_bill_id = @VB_BillID
+       OR (@VB_BillID IS NULL AND b.subsidiary_id = @Company AND c.symbol = 'EUR' AND b.amount_open >= @TestAmount))
+  -- not waiting in an unsent vendor payment
+  AND NOT EXISTS (SELECT 1
+                  FROM tb_Netsuite_VendorPayment_Apply a
+                  JOIN tb_Netsuite_VendorPayment h ON h.BPA_EntryID = a.BPA_ParentID
+                  WHERE a.doc_id = b.vendor_bill_id AND h.BPA_Direction = 'TO' AND h.BPA_Status = 0)
+ORDER BY b.amount_open DESC, b.vendor_bill_id;
+
+IF @VB_VendorID IS NULL
+BEGIN
+    SET @msg = N'No vendor bill found: ' + ISNULL(N'bill ' + @VB_BillID + N' is not in tb_Netsuite_VendorBill',
+               N'no open EUR bill in subsidiary ' + @Company + N' with at least ' + CAST(@TestAmount AS nvarchar(20)) + N' open') + N'.';
+    THROW 50002, @msg, 1;
+END
+
 IF @VB_Subsidiary <> @Company
     PRINT N'WARNING: the test bill is in subsidiary ' + @VB_Subsidiary + N', the bank account in ' + @Company
         + N': the vendor payment will be skipped.';
 
-SELECT TOP (1) @VB_Currency  = symbol FROM tb_Netsuite_Currency WHERE id = @VB_CurrencyID;
-SELECT TOP (1) @INV_Currency = symbol FROM tb_Netsuite_Currency WHERE id = @INV_CurrencyID;
-IF @VB_Currency IS NULL OR @INV_Currency IS NULL
-    THROW 50002, N'@VB_CurrencyID or @INV_CurrencyID not found in tb_Netsuite_Currency.', 1;
+-- The real invoice: latest loaded row per invoice, open, EUR, preferably in @Company
+;WITH inv AS (
+    SELECT CAST(i.invoice_id AS nvarchar(100))          AS invoice_id,
+           CAST(i.customer_id AS nvarchar(100))         AS customer_id,
+           i.customer_name,
+           CAST(i.subsidiary_id AS nvarchar(100))       AS subsidiary_id,
+           CAST(i.currency_id AS nvarchar(100))         AS currency_id,
+           TRY_CAST(i.amount_open AS decimal(18, 2))    AS amount_open,
+           ROW_NUMBER() OVER (PARTITION BY i.invoice_id
+                              ORDER BY i.BPA_Syscreated DESC, i.BPA_EntryID DESC) AS rn
+    FROM tb_Netsuite_Invoice i
+    WHERE i.invoice_number NOT LIKE 'BPATEST-%'
+)
+SELECT TOP (1)
+       @INV_InvoiceID    = x.invoice_id,
+       @INV_CustomerID   = x.customer_id,
+       @INV_CustomerName = x.customer_name,
+       @INV_Subsidiary   = x.subsidiary_id,
+       @INV_CurrencyID   = x.currency_id,
+       @INV_Currency     = c.symbol
+FROM inv x
+JOIN tb_Netsuite_Currency c ON c.id = x.currency_id
+WHERE x.rn = 1
+  AND x.customer_id IS NOT NULL
+  AND (   x.invoice_id = @INV_InvoiceID
+       OR (@INV_InvoiceID IS NULL AND c.symbol = 'EUR' AND x.amount_open >= @TestAmount))
+ORDER BY CASE WHEN x.subsidiary_id = @Company THEN 0 ELSE 1 END, x.amount_open DESC, x.invoice_id;
+
+IF @INV_CustomerID IS NULL
+BEGIN
+    SET @msg = N'No invoice found: ' + ISNULL(N'invoice ' + @INV_InvoiceID + N' is not in tb_Netsuite_Invoice',
+               N'no open EUR invoice with at least ' + CAST(@TestAmount AS nvarchar(20)) + N' open') + N'.';
+    THROW 50005, @msg, 1;
+END
+
+IF @INV_Subsidiary <> @Company
+    PRINT N'NOTE: the test invoice is in subsidiary ' + @INV_Subsidiary + N' (none open in ' + @Company
+        + N'); fine for now, the customer scenario is not built yet.';
 
 IF EXISTS (SELECT 1 FROM tb_Netsuite_Bank_account_details
            WHERE REPLACE(UPPER(custrecord_2663_entity_iban), ' ', '') = @DummyIBAN)
@@ -110,13 +179,6 @@ BEGIN
     SET @msg = N'Existing document numbers appear in the test descriptions: ' + @msg + N'. Run again a minute later.';
     THROW 50004, @msg, 1;
 END
-
--- A bill already waiting in an unsent vendor payment would be skipped
-IF EXISTS (SELECT 1
-           FROM tb_Netsuite_VendorPayment_Apply a
-           JOIN tb_Netsuite_VendorPayment h ON h.BPA_EntryID = a.BPA_ParentID
-           WHERE a.doc_id = @VB_BillID AND h.BPA_Direction = 'TO' AND h.BPA_Status = 0)
-    PRINT N'WARNING: bill ' + @VB_BillID + N' is already in an unsent vendor payment: the vendor payment will be skipped.';
 
 BEGIN TRANSACTION;
 
@@ -205,6 +267,11 @@ CROSS APPLY (SELECT CASE      -- same rule as sp_Bank_Netsuite_FinancialEntry_Cr
                  ELSE 'JOURNALENTRY'
              END AS Actual) x
 ORDER BY s.Expected DESC;
+
+SELECT 'vendor bill' AS document, @VB_BillID AS internal_id, @BillNo AS test_number, @VB_VendorID AS relation_id,
+       @VB_VendorName AS relation_name, @VB_Subsidiary AS subsidiary_id, @VB_Currency AS currency
+UNION ALL
+SELECT 'invoice', @INV_InvoiceID, @InvoiceNo, @INV_CustomerID, @INV_CustomerName, @INV_Subsidiary, @INV_Currency;
 
 PRINT N'Test run ' + @run + N' on ' + @OwnIBAN + N'. Next:';
 PRINT N'    EXEC sp_Bank_Netsuite_FinancialEntry_Create ''' + @Company + N''', @Preview = 1;';
