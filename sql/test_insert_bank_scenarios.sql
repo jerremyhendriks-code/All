@@ -5,8 +5,8 @@
             --sp_Bank_Netsuite_FinancialEntry_Create (fn_Bank_Match)--> NetSuite records
 
     Inserts:
-    - tb_Netsuite_VendorBill  one test bill    number BPATEST-VB-<run>,  amount_open = @TestAmount
-    - tb_Netsuite_Invoice     one test invoice number BPATEST-INV-<run>, amount_open = @TestAmount
+    - tb_Netsuite_VendorBill  one test bill    number BPATEST-VB-<tag>,  amount_open = @TestAmount
+    - tb_Netsuite_Invoice     one test invoice number BPATEST-INV-<tag>, amount_open = @TestAmount
     - tb_Rabobank_Transaction three transactions on our own account @OwnIBAN:
         1. VENDORPAYMENT    money out, -@TestAmount, description = the test bill number
         2. CUSTOMERPAYMENT  money in,  +@TestAmount, description = the test invoice number
@@ -22,8 +22,8 @@
     By default the script picks an open bill and invoice from the staging tables
     (the latest loaded row of each), so they exist in NetSuite.
 
-    Every run uses new numbers and entryReferences (<run> = yyyyMMddHHmmss), so the
-    script can be run again. Cleanup is at the bottom.
+    Every run uses new numbers and entryReferences (<run> = yyyyMMddHHmmss, <tag> = the
+    same in letters, so no digits end up in a description), so the script can be run again. Cleanup is at the bottom.
 
     Note: sp_Bank_Transaction_Rabobank_Copy copies ALL waiting Rabobank rows of
     @OwnIBAN, not only these three.
@@ -48,9 +48,13 @@ DECLARE @INV_InvoiceID nvarchar(100)  = NULL;
 -- ===================
 
 DECLARE @run      varchar(14) = FORMAT(GETDATE(), 'yyyyMMddHHmmss');
-DECLARE @BillNo   nvarchar(60) = N'BPATEST-VB-'  + @run;
-DECLARE @InvoiceNo nvarchar(60) = N'BPATEST-INV-' + @run;
-DECLARE @JournalDescription nvarchar(255) = N'BPA test bankkosten ' + @run;
+-- The descriptions get the run as letters (0 -> A ... 9 -> J): fn_Bank_Match matches a document
+-- number anywhere in the description, and the staging tables hold numbers like '1'.
+DECLARE @tag      varchar(14) = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(@run,
+                        '0', 'A'), '1', 'B'), '2', 'C'), '3', 'D'), '4', 'E'), '5', 'F'), '6', 'G'), '7', 'H'), '8', 'I'), '9', 'J');
+DECLARE @BillNo   nvarchar(60) = N'BPATEST-VB-'  + @tag;
+DECLARE @InvoiceNo nvarchar(60) = N'BPATEST-INV-' + @tag;
+DECLARE @JournalDescription nvarchar(255) = N'BPA test bankkosten ' + @tag;
 DECLARE @VB_VendorID nvarchar(100), @VB_VendorName nvarchar(255), @VB_Subsidiary nvarchar(100),
         @VB_CurrencyID nvarchar(100), @VB_Currency nvarchar(100),
         @INV_CustomerID nvarchar(100), @INV_CustomerName nvarchar(255), @INV_Subsidiary nvarchar(100),
@@ -165,7 +169,7 @@ IF EXISTS (SELECT 1 FROM tb_Netsuite_Bank_account_details
     THROW 50003, N'@DummyIBAN exists in tb_Netsuite_Bank_account_details; pick another one.', 1;
 
 -- fn_Bank_Match matches on "number appears in the description": no existing number may
--- be part of a test description (e.g. an invoice '1013' inside the run timestamp)
+-- be part of a test description
 SELECT @msg = ISNULL(@msg + N', ', N'') + d.number
 FROM (SELECT LTRIM(RTRIM(invoice_number)) AS number FROM tb_Netsuite_Invoice
       UNION
@@ -176,7 +180,7 @@ WHERE d.number <> ''
        OR @JournalDescription LIKE '%' + d.number + '%');
 IF @msg IS NOT NULL
 BEGIN
-    SET @msg = N'Existing document numbers appear in the test descriptions: ' + @msg + N'. Run again a minute later.';
+    SET @msg = N'Existing document numbers appear in the test descriptions: ' + @msg + N'.';
     THROW 50004, @msg, 1;
 END
 
