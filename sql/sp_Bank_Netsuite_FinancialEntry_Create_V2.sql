@@ -5,7 +5,10 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 /*
-    sp_Bank_Netsuite_FinancialEntry_Create
+    sp_Bank_Netsuite_FinancialEntry_Create_V2
+
+    New version of sp_Bank_Netsuite_FinancialEntry_Create; the original stays as it is
+    (backup) until this one replaces it.
 
     Bank engine for Ellomay: turns open bank transactions (tb_Bank_Transactions,
     BPA_Status = 0) into NetSuite records. Three scenarios, decided by fn_Bank_Match:
@@ -43,11 +46,11 @@ GO
     id is NOT NULL without a default: sent as '' and filled once NetSuite has created the payment.
 
     Run:
-        EXEC sp_Bank_Netsuite_FinancialEntry_Create '501';
-        EXEC sp_Bank_Netsuite_FinancialEntry_Create '501', @Preview = 1;      -- only matches (Matched_*), creates nothing
-        EXEC sp_Bank_Netsuite_FinancialEntry_Create '501', @BPA_EntryID = '<one bank transaction>';
+        EXEC sp_Bank_Netsuite_FinancialEntry_Create_V2 '501';
+        EXEC sp_Bank_Netsuite_FinancialEntry_Create_V2 '501', @Preview = 1;      -- only matches (Matched_*), creates nothing
+        EXEC sp_Bank_Netsuite_FinancialEntry_Create_V2 '501', @BPA_EntryID = '<one bank transaction>';
 */
-CREATE OR ALTER PROCEDURE [dbo].[sp_Bank_Netsuite_FinancialEntry_Create]
+CREATE OR ALTER PROCEDURE [dbo].[sp_Bank_Netsuite_FinancialEntry_Create_V2]
 (
 	@BPA_Company varchar(50)
 ,	@BPA_EntryID uniqueidentifier = NULL	-- NULL = all open transactions of @BPA_Company
@@ -57,7 +60,7 @@ AS
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
-DECLARE @Creator nvarchar(50) = N'sp_Bank_Netsuite_FinancialEntry_Create';
+DECLARE @Creator nvarchar(50) = N'sp_Bank_Netsuite_FinancialEntry_Create_V2';
 
 -- 1. Match the open transactions
 UPDATE Transactions
