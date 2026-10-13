@@ -1,0 +1,911 @@
+USE [BPAStaging]
+GO
+/****** Object:  UserDefinedFunction [dbo].[fn_Bank_Match]    Script Date: 13/10/2026 14:27:47 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+/*
+    Changes for the bank engine (sp_Bank_Netsuite_FinancialEntry_Create), marked "-- BANK ENGINE:":
+    1. Money out without a vendor from the IBAN: find the vendor by a vendor bill number in the
+       description (only when exactly one vendor has a bill with a number in the description).
+    2. Vendor bills: the bank amount of a payment is negative, amount_open is positive, so compare
+       ABS(@amount) with amount_open (to the cent).
+    3. PurchaseInvoice returns the vendor_bill_number as Reference (was vendor_bill_id), the same as
+       PurchaseInvoiceAmount, so the engine can look the bill up.
+    4. vendor_id / customer_id nvarchar(100) (was 6: longer NetSuite IDs were cut off silently) and
+       Reference nvarchar(60) (was 20: a longer document number stopped the whole matching run).
+    5. A document number only counts when it has at least @MinNumberLength (4) characters, so numbers
+       like '1' or an empty number don't match every description.
+*/
+ALTER function [dbo].[fn_Bank_Match]
+	(
+
+--declare
+@BPA_Type varchar(10)
+,	@BPA_EntryID uniqueidentifier
+,	@BankAccount varchar(50)
+,	@IBAN varchar(33)
+,	@Amount float
+,	@Currency varchar(20)
+,   @Description varchar(255)
+,	@kenmerk varchar(255)
+,	@incassant VARCHAR(255)
+,	@betalingskenmerk VARCHAR(255)
+,	@Machtiging VARCHAR(255)
+,	@Mutationcode varchar(5)
+	)
+--declare @retreport TABLE
+Returns @retreport TABLE
+(
+		GLCode char(9),
+		vendor_id nvarchar(100),		-- BANK ENGINE: was nvarchar(6)
+		customer_id nvarchar(100),		-- BANK ENGINE: was nvarchar(6)
+		Costcenter varchar(10),
+		CostUnit nvarchar(10),
+		Reference nvarchar(60),			-- BANK ENGINE: was nvarchar(20)
+		typematch nvarchar(50),
+		--IBAN nvarchar(34),
+		--BIC nvarchar(20),
+		--Bankname nvarchar(100),
+		NewCustomer int,
+		VatCode nvarchar(10),
+		ReferenceXML xml,
+		WorkflowNumber int,
+		WorkflowID uniqueidentifier
+
+		--Foreign_Description varchar(255),
+		--Original_Amount float,
+		--Paid_Amount float,
+		--GLCode_PaidDifference nvarchar(9)
+	)
+BEGIN
+--set @BPA_Type='BANK'
+--set @BPA_EntryID='7D8EE1D3-C1C3-F111-9386-00155D0A0313'
+IF @BPA_Type='BANK' and @BPA_EntryID is not null
+BEGIN
+	-- Laad hier gegevens voor matching uit ABN transactie tabel
+	SELECT
+		@BankAccount	=g.BPA_Origin
+	,	@IBAN			=g.IBAN
+	,	@Amount			=g.Amount
+	,	@Currency		=g.Currency
+	,   @Description	=g.Description
+	,	@kenmerk		=g.Kenmerk
+	,	@incassant		=g.Incassant
+	,	@betalingskenmerk=g.Betalingskenmerk
+	,	@Machtiging		=g.Machtiging
+	,	@Mutationcode	=g.Mutationcode
+	FROM tb_Bank_Transactions g
+	WHERE BPA_EntryID=@BPA_EntryID
+
+	--set @IBAN='NL20ABNA0881342394'
+	--set @Description='221A'
+	--set @Amount=1609.25
+END
+
+
+--IF @BPA_Type='ABN' and @BPA_EntryID is not null
+--BEGIN
+--	-- Laad hier gegevens voor matching uit ABN transactie tabel
+--	SELECT
+--		@BankAccount	=g.BPA_Origin
+--	,	@IBAN			=g.Matched_IBAN
+--	,	@Amount			=g.amount
+--	,	@Currency		=g.currency
+--	,   @Description	=g.Matched_Description
+--	,	@kenmerk		=g.Matched_Kenmerk
+--	,	@incassant		=g.Matched_Incassant
+--	,	@betalingskenmerk=g.Matched_Betalingskenmerk
+--	,	@Machtiging		=g.Matched_Machtiging
+--	,	@Mutationcode	=g.mutationcode
+--	FROM tb_ABN_Gettransactions g
+--	WHERE BPA_EntryID=@BPA_EntryID
+--END
+
+--IF @BPA_Type='RABO' and @BPA_EntryID is not null
+--BEGIN
+--	-- Laad hier gegevens voor matching uit ABN transactie tabel
+--	SELECT
+--		@BankAccount	=g.BPA_Origin
+--	,	@IBAN			=isnull(g.vendor_idAccount_iban,g.customer_idAccount_iban)
+--	,	@Amount			=g.transactionAmount_value
+--	,	@Currency		=g.transactionAmount_currency
+--	,   @Description	=g.remittanceInformationUnstructured
+--	,	@Machtiging		=g.mandateId
+--	,	@kenmerk		=g.endToEndId
+--	--,	@Mutationcode	=g.mutationcode
+--	FROM tb_RABO_Transactions g
+--	WHERE BPA_EntryID=@BPA_EntryID
+--END
+
+
+
+-- Deze functie zoek eerst de extra velden binnen de bank omschrijving
+-- Daarna wordt ahv regels de matching bepaald:
+--1. Zoek debiteur of crediteur ahv gesynchroniseerde bankrekeneningen (Exact / ERP)
+--2. Geen relatie gevonden: Zoek debiteur of crediteur ahv workflow regels (debiteur- en/of crediteurrekening)
+--3. Crediteur gevonden: Zoek openstaande post voor crediteur erbij
+--4. Debiteur gevonden:
+--		Zoek openstaande post voor debiteur erbij
+--		Niet gevonden: Zoek ahv bedrag of er 1 factuur matched
+--		Niet gevonden: Zoek ahv omschrijving of totaalbedrag of er meerdere facturen matchen
+--5. Zoek ahv workflow regels of er een match is
+--6. Geen match: Zoek ahv factuur of er een match is met een debiteur
+--7. Geen match: Maak met gekoppelde glcode aan.
+
+	DECLARE
+		@CompanyID uniqueidentifier
+		,@Company nvarchar(50)
+		,@counterPartyAccountNumber nvarchar(20)
+		,@counterPartyName nvarchar(100)
+	--	,@amount float
+	--	,@currency nvarchar(10)
+		,@TypeTransaction nvarchar(50)
+		,@WorkflowNumber int
+		,@WorkflowID uniqueidentifier
+
+DECLARE 	@Journal nvarchar(20),
+			@DefaultGLCodevendor_id as nvarchar(9),
+			@DefaultGLCodecustomer_id as nvarchar(9),
+			@ReferenceXML xml,
+			@GLCode_PaidDifference as nvarchar(9)
+
+DECLARE @costCenter nvarchar(20),
+		@CostUnit nvarchar(20),
+		@vatcode nvarchar(10)
+
+DECLARE @Newcustomer bit=0
+DECLARE @typematch as varchar(50)
+DECLARE @vendor_id as varchar(100)		-- BANK ENGINE: was varchar(6)
+DECLARE @customer_id as varchar(100)	-- BANK ENGINE: was varchar(6)
+Declare @marge as float
+declare @GLCode varchar(9)
+declare @reference varchar(60)
+DECLARE @MinNumberLength int = 4		-- BANK ENGINE: shorter document numbers are not looked for in the description
+	-- Haal hier de default waardes op voor deze bankrekening.
+	SELECT
+		@Journal=Journal
+		,@DefaultGLCodevendor_id=DefaultGLCodeCreditor
+		,@DefaultGLCodecustomer_id=DefaultGLCodeDebtor
+	--	,@CompanyID=CompanyID
+		,@Company=Company
+--		,@GLCode_PaidDifference=GLCode_PaidDifference  -- TI
+	FROM
+		vw_Bank_BankAccounts
+	WHERE
+		Bankaccount = @BankAccount
+--select * 		FROM
+--		vw_abn_bankaccounts
+
+
+	-- Kijk hier of er voor dezre bankrekening 1 debiteur of crediteur is.
+
+
+	SELECT TOP (1000)
+
+		@typematch = 'IBAN'
+			, @vendor_id = CASE WHEN count(distinct b.Vendorid)=1
+									THEN max(b.Vendorid)
+							  -- WHEN count(distinct case when b.DefaultBankAccount=1 then  b.Crdnr end)=1
+									--THEN max(distinct case when b.DefaultBankAccount=1 then  b.Crdnr end)
+						  END
+			, @customer_id =	  CASE	WHEN count(distinct b.CustomerID)=1
+									THEN max(b.CustomerID)
+								--WHEN count(distinct case when b.DefaultBankAccount=1 then  b.Debnr end)=1
+								--	THEN max(distinct case when b.DefaultBankAccount=1 then  b.Debnr end)
+						  END
+	FROM [tb_Netsuite_Bank_account_details] b
+	WHERE
+		--b.CompanyID=@CompanyID
+		--and
+		b.custrecord_2663_entity_iban = @IBAN
+
+	having
+		(
+			COUNT(DISTINCT b.Vendorid)=1
+			or
+			COUNT(DISTINCT b.CustomerID)=1
+			--or
+			--count(distinct case when b.DefaultBankAccount=1 then  b.Debnr end)=1
+			--or
+			--count(distinct case when b.DefaultBankAccount=1 then  b.Crdnr end)=1
+		)
+
+
+
+
+	IF @vendor_id IS NULL or
+	   @customer_id IS NULL
+	BEGIN
+		-- Zoek hier in de workflow regels of er een debiteur of crediteur is gekoppeld
+		-- Dit wordt dan gebruikt voor het zoeken van inkoop- of verkoopfactuur.
+
+		set @customer_id=null
+		--select 'vw_BANK_Matching'
+		--SELECT
+		--	 @typematch = 'IBANWF'
+		--	,@vendor_id = isnull(@vendor_id,CASE WHEN COUNT(DISTINCT m.vendor_id) = 1 THEN MAX(m.vendor_id) END)
+		--	,@customer_id = isnull(@customer_id,CASE WHEN COUNT(DISTINCT m.customer_id) = 1 THEN MAX(m.customer_id) END)
+		--	,@WorkflowNumber=CASE	WHEN @vendor_id is null AND COUNT(DISTINCT m.vendor_id)=1 THEN MIN(m.WorkflowNumber)
+		--							WHEN @customer_id is null AND COUNT(DISTINCT m.customer_id) = 1	THEN MIN(m.WorkflowNumber) END
+
+		--FROM
+		--	vw_Bank_Matching m
+		--WHERE
+		--	m.BankAccount = @BankAccount
+		--	AND m.BankaccountRelation = @IBAN
+		--	AND (
+		--			m.vendor_id IS NOT NULL
+		--			OR
+		--			m.customer_id IS NOT NULL
+		--		)
+		--	AND isnull(m.CredDebCode,'') in ('C','D') -- Filter hier alleen debiteur en/of crediteurrekeningen eruit
+		--HAVING
+		--	(
+		--		COUNT(DISTINCT m.vendor_id) = 1
+		--		OR
+		--		COUNT(DISTINCT m.customer_id) = 1
+		--	)
+		--IF @typematch='IBANWF'
+		--	SELECT
+		--		@WorkflowID=m.WorkflowID
+		--	FROM
+		--		vw_Bank_Matching m
+		--	WHERE
+		--		@WorkflowNumber=WorkflowNumber
+	END
+
+
+
+
+
+
+	IF @customer_id is null or 1=1 -- Altijd kijken of er ahv invoicenummer klant herkend kan worden. Soms is IBAN gematched aan verkeerde relatie.
+	BEGIN
+		-- Hier is nog niets gevonden, probeer nog op factuurnummer bij openstaande posten.
+		SELECT @typematch = 'IBANInvoice'
+				, @GLCode = @DefaultGLCodecustomer_id--  ISNULL(OffSetLedgerAccountNumber, @DefaultGLCodecustomer_id)
+				, @Newcustomer=case when @customer_id is null then 1 else 0 end
+				, @customer_id = i.customer_id
+
+			FROM
+				tb_Netsuite_Invoice i
+			WHERE
+				--CompanyID=@CompanyID
+				--AND
+				LEN(LTRIM(RTRIM(i.invoice_number))) >= @MinNumberLength		-- BANK ENGINE
+				AND
+				@description like '%' + ltrim(rtrim(i.invoice_number)) + '%'
+	END
+
+
+	--set @vendor_id=null
+	IF @vendor_id IS NULL or
+	   @customer_id IS NULL
+	BEGIN
+		-- Zoek hier in de workflow regels of er een debiteur of crediteur is gekoppeld
+		-- Dit wordt dan gebruikt voor het zoeken van inkoop- of verkoopfactuur.
+
+				set @customer_id=null
+		--select 'vw_bank_matching'
+
+		--SELECT
+		--	 @typematch = 'CUSTOMERWF'
+		--	,@vendor_id = isnull(@vendor_id,CASE WHEN COUNT(DISTINCT m.vendor_id) = 1 THEN MAX(m.vendor_id) END)
+		--	,@customer_id = isnull(@customer_id,CASE WHEN COUNT(DISTINCT m.customer_id) = 1 THEN MAX(m.customer_id) END)
+		--	,@WorkflowNumber=CASE WHEN @vendor_id is null AND COUNT(DISTINCT m.vendor_id)=1 THEN MIN(m.WorkflowNumber)
+		--						WHEN @customer_id is null AND COUNT(DISTINCT m.customer_id) = 1 THEN MIN(m.WorkflowNumber) END
+		--FROM
+		--	vw_Bank_Matching m
+		--WHERE
+		--		m.CompanyID=@CompanyID
+		--	AND
+		--		m.BankAccount=@BankAccount
+		--	AND
+		--	(
+		--		m.BankaccountRelation = @IBAN
+		--		OR
+		--		m.BankaccountRelation is null
+		--	)
+		--	AND
+		--	(
+		--		@Description LIKE '%'+m.Description+'%'
+		--		OR
+		--		[Description] is null
+		--	)
+		--	AND
+		--	(
+		--		Amount is null
+		--		or
+		--		(isnull(AmountCompare,'')='=' and @amount=Amount)
+		--		or
+		--		(AmountCompare='<' and @amount<Amount)
+		--		or
+		--		(AmountCompare='>' and @amount>Amount)
+		--		or
+		--		(AmountCompare='<>' and @amount between Amount and AmountTo)
+		--	)
+		--	AND
+		--	(
+		--		m.PaymentDirection='A'
+		--		OR
+		--			(
+		--				m.PaymentDirection='P'
+		--				AND @amount > 0
+		--			)
+		--			OR
+		--			(
+		--				m.PaymentDirection='N'
+		--				AND @amount<0
+		--			)
+		--	)
+		--	AND
+		--	(
+		--		m.MutationCode is null
+		--		OR
+		--		m.MutationCode=@Mutationcode
+		--	)
+		--	AND (
+		--			m.Kenmerk is null
+		--			OR
+		--			@kenmerk like '%' + m.Kenmerk+'%'
+		--		)
+		--	AND (
+		--			m.Betalingskenmerk is null
+		--			OR
+		--			@Betalingskenmerk like '%' + m.Betalingskenmerk+'%'
+		--		)
+		--	AND (
+		--			m.Machtiging is null
+		--			OR
+		--			@Machtiging like '%' + m.Machtiging+'%'
+		--		)
+		--	AND (
+		--			m.Incassant is null
+		--			OR
+		--			@Incassant like '%' + m.Incassant+'%'
+		--		)
+		--	AND
+		--		isnull(m.CredDebCode,'') in ('C','D') -- Filter hier alleen debiteur en/of crediteurrekeningen eruit
+		--HAVING
+		--	(
+		--		COUNT(DISTINCT m.vendor_id) = 1
+		--		OR
+		--		COUNT(DISTINCT m.customer_id) = 1
+		--	)
+
+		--IF @typematch='CUSTOMERWF'
+		--	SELECT
+		--		@WorkflowID=m.WorkflowID
+		--	FROM
+		--		vw_Bank_Matching m
+		--	WHERE
+		--		@WorkflowNumber=WorkflowNumber
+	END
+
+	-- BANK ENGINE: geld eruit en nog geen crediteur via IBAN: zoek de crediteur ahv een inkoopfactuurnummer
+	-- in de omschrijving (alleen als precies 1 crediteur zo'n factuur heeft).
+	IF @vendor_id IS NULL AND @amount < 0
+	BEGIN
+		SELECT
+			@vendor_id = CASE WHEN COUNT(DISTINCT v.vendor_id) = 1 THEN MAX(v.vendor_id) END
+		FROM
+			tb_Netsuite_vendorBill v
+		WHERE
+			LEN(LTRIM(RTRIM(v.vendor_bill_number))) >= @MinNumberLength
+			AND @description like '%' + ltrim(rtrim(v.vendor_bill_number)) + '%'
+	END
+
+	-- Indien er een crediteur is gevonden, zoek dan ook de inkoopfactuur erbij.
+	IF @vendor_id IS NOT NULL
+	BEGIN
+
+
+		-- BANK ENGINE: ABS(@amount) (betaling is negatief, amount_open positief), op de cent,
+		--              en Reference = vendor_bill_number (was vendor_bill_id)
+		select
+			@typematch = 'PurchaseInvoice'
+			, @Reference = CASE WHEN ABS(ABS(@amount) - v.amount_open) < 0.005 and @currency='EUR' THEN v.vendor_bill_number
+							WHEN ABS(ABS(@amount) - v.amount_open) < 0.005 and @currency=v.currency_name THEN v.vendor_bill_number
+							ELSE null END
+			, @GLCode = @DefaultGLCodevendor_id--ISNULL(OffSetLedgerAccountNumber, @DefaultGLCodevendor_id)
+		from
+			tb_Netsuite_vendorBill v --	[001].dbo._Orbis_Crediteur_Openstaand
+		where
+			1=1--CompanyID=@CompanyID
+			AND vendor_id = @vendor_id
+			AND LEN(LTRIM(RTRIM(v.vendor_bill_number))) >= @MinNumberLength		-- BANK ENGINE
+			AND @description like '%' + ltrim(rtrim(v.vendor_bill_number)) + '%'
+
+
+
+		-- Geen inkoopfactuur gevonden, kijk hier of er één factuur met dit bedrag openstaat.
+		IF @reference IS NULL
+		BEGIN
+			-- BANK ENGINE: ABS(@amount), op de cent
+			SELECT
+				@typematch = 'PurchaseInvoiceAmount'
+				, @Reference = MAX(CASE
+										WHEN ABS(ABS(@amount) - v.amount_open) < 0.005 and @Currency='EUR'	then v.vendor_bill_number
+										WHEN ABS(ABS(@amount) - v.amount_open) < 0.005 and @Currency=v.currency_name THEN v.vendor_bill_number
+										ELSE null
+									END)
+				, @GLCode = @DefaultGLCodevendor_id --MAX(ISNULL(OffSetLedgerAccountNumber, @DefaultGLCodevendor_id))
+			FROM
+				tb_Netsuite_vendorBill v --	[001].dbo._Orbis_Crediteur_Openstaand
+			WHERE
+				v.vendor_id = @vendor_id
+				and (	(ABS(ABS(@amount) - v.amount_open) < 0.005 and @currency='EUR')
+						or
+						(ABS(ABS(@amount) - v.amount_open) < 0.005 and @currency=v.currency_name)
+					)
+			GROUP BY
+				v.vendor_id
+			HAVING
+				COUNT(*) = 1
+		END
+
+		-- Kijken of dit nodig is???
+		--if @reference is null
+		--begin
+		--	set @vendor_id=null
+		--end
+
+		-- Als er een match is op referentie, dan is het een crediteur en geen debiteur (mocht deze als beide herkend zijn).
+		if @typematch like 'Purchase%' and @customer_id is not null
+		begin
+			set @customer_id=null
+		end
+
+	END
+
+
+
+	-- Probeer hier debiteur te herkennen ahv factuurnummer
+	IF isnull(@typematch,'') not like 'Purchase%'
+	  and @customer_id IS NULL
+	BEGIN
+
+		-- Hier is nog niets gevonden, probeer nog op factuurnummer bij openstaande posten.
+		SELECT @typematch = 'IBANSalesInvoice'
+				, @GLCode = @DefaultGLCodecustomer_id --ISNULL(OffSetLedgerAccountNumber, @DefaultGLCodecustomer_id)
+				, @Newcustomer=case when @customer_id is null then 1 else 0 end
+				, @customer_id = c.customer_id
+				, @Reference =CASE WHEN @amount = c.amount_open THEN c.invoice_number ELSE null END
+			FROM
+				tb_Netsuite_Invoice c
+			WHERE
+				1=1 --and CompanyID=@CompanyID
+				AND	@customer_id is null
+				AND LEN(LTRIM(RTRIM(c.invoice_number))) >= @MinNumberLength		-- BANK ENGINE
+				AND
+				(	@description like '%' + ltrim(rtrim(c.invoice_number)) + '%'
+						OR
+					@betalingskenmerk like '%' + ltrim(rtrim(c.invoice_number)) + '%'
+				)
+	end
+
+	--set @customer_id='119099'
+	-- Debiteur bekend?
+	IF @customer_id is not null
+	BEGIN
+
+
+
+		-- Probeer op openstaande post te matchen.
+		SELECT
+			@typematch = 'SalesInvoice'
+			, @GLCode = @DefaultGLCodecustomer_id --ISNULL(OffSetLedgerAccountNumber, @DefaultGLCodecustomer_id)
+			, @Newcustomer=case when @customer_id is null then 1 else 0 end
+			, @customer_id = c.customer_id
+			, @Reference =CASE WHEN @amount = c.amount_open and @currency='EUR' THEN c.invoice_number
+							   WHEN @amount = c.amount_open and @currency=c.currency_name THEN c.invoice_number
+							   --when @Original_Amount=amount_open and @currency=currency then invoice_number
+
+							ELSE null END
+		FROM
+			tb_Netsuite_Invoice c
+		WHERE
+			1=1 --CompanyID=@CompanyID
+			AND	c.customer_id = @customer_id
+			AND LEN(LTRIM(RTRIM(c.invoice_number))) >= @MinNumberLength		-- BANK ENGINE
+			AND ( @description like '%' + ltrim(rtrim(c.invoice_number)) + '%'
+					OR
+				 @betalingskenmerk like '%' + ltrim(rtrim(c.invoice_number)) + '%'
+				)
+
+		--set @marge=0
+		--select @marge=Marge from vw_Bank_BankAccounts_Marge where BankAccount=@BankAccount and @amount between AmountFrom and AmountTo
+
+		--if @reference is null and @marge<>0
+		--begin
+		--	-- Kijk hier of de factuur met marge voldoet aan de criteria. In dat geval deze later alsnog matchen.
+		--	SELECT
+		--	@typematch = 'SalesInvoiceMarge'
+		--	, @GLCode = ISNULL(OffSetLedgerAccountNumber, @DefaultGLCodecustomer_id)
+		--	, @Newcustomer=case when @customer_id is null then 1 else 0 end
+		--	, @customer_id = customer_id
+		--	, @Reference =
+		--			CASE WHEN ABS(@amount-amount_open)<=@marge and @currency='EUR' THEN invoice_number
+		--					   WHEN ABS(@amount-amount_openCurrency)<=@marge and @currency=Currency THEN invoice_number
+		--					ELSE null END
+		--	FROM
+		--		tb_Bank_Synch_customer_id_amount_open
+		--	WHERE
+		--		CompanyID=@CompanyID
+		--		AND	customer_id = @customer_id
+		--		AND @description like '%' + ltrim(rtrim(invoice_number)) + '%'
+		--		and CASE WHEN ABS(@amount-amount_open)<=@marge and @currency='EUR' THEN invoice_number
+		--					   WHEN ABS(@amount-amount_openCurrency)<=@marge and @currency=Currency THEN invoice_number
+		--					ELSE null END is not null
+		--end
+
+
+
+		-- Geen openstaande post gevonden, probeer het met een totaal bedrag
+		IF  @reference is NULL
+		BEGIN
+			-- Probeer hier te kijken of er 1 post openstaat en overeenkomt met bedrag.
+				SELECT @typematch='SalesinvoiceAmount'
+						,@reference=max(c.invoice_number)
+				FROM
+						tb_Netsuite_Invoice c
+				WHERE
+						c.customer_id=@customer_id
+						AND (
+								(c.amount_open=@amount and @currency='EUR')
+								OR
+								(c.amount_open=@amount and @currency=c.currency_name)
+									--OR
+									--(amount_open=@Original_Amount and @currency=currency)
+								)
+				HAVING
+						COUNT(*)=1
+
+		END
+
+		-- Hier proberen we of de facturen herkend worden ahv omschrijving
+		IF 	@reference IS NULL
+		BEGIN
+
+			-- Zoek hier ahv Omschrijving en betalingskenmerk / Factuurnummer of er een match is. Bedrag = cumulatieve gesorteerd op duedate en factuurnummer.
+			;WITH s AS (
+		SELECT ROW_NUMBER() OVER (ORDER BY isnull(t.due_date,'2099-01-01'),t.invoice_number ASC) AS RowNumber,
+						t.customer_id,
+						t.invoice_number,
+						t.due_date
+						,case when @currency=t.currency_name and @currency<>'EUR' then t.amount_open
+							else t.amount_open end amount_open
+						,sum(case when @currency=t.currency_name and @currency<>'EUR' then t.amount_open
+							else t.amount_open end) over (order by isnull(t.due_date,'2099-01-01'),t.invoice_number ) as Amount_openCum
+					FROM
+						tb_Netsuite_Invoice  t
+					WHERE
+						1=1 --CompanyID=@CompanyID
+						AND	t.customer_id = @customer_id
+						AND LEN(LTRIM(RTRIM(t.invoice_number))) >= @MinNumberLength		-- BANK ENGINE
+						AND
+						(	@description like '%'+ltrim(rtrim(t.invoice_number))+'%'
+							OR
+							@betalingskenmerk like '%' + ltrim(rtrim(t.invoice_number)) + '%'
+						)
+					)
+			SELECT TOP 1  @typematch='SalesinvoiceListDescription'
+					 ,@ReferenceXML=(SELECT t.invoice_number FROM s t WHERE t.RowNumber<=s.RowNumber FOR XML PATH(''),ROOT('Invoices'))
+			FROM s WHERE Amount_openCum=@amount;
+
+		END
+
+		-- Hier proberen we of de oudste facturen opgeteld het totaalbedrag is.
+		IF 	@reference is null AND
+			@referenceXML is null
+		BEGIN
+
+			-- Zoek hier ahv cumulatieve waardes de lijst van openstaande facturen erbij. Bedrag = cumulatieve gesorteerd op duedate en factuurnummer.
+			;WITH s AS (
+					SELECT ROW_NUMBER() OVER (ORDER BY isnull(t.due_date,'2099-01-01'),t.invoice_number ASC) AS RowNumber,
+						t.customer_id,
+						t.invoice_number,
+						t.due_date
+						,case when @currency=t.currency_name and @currency<>'EUR' then t.amount_open
+							else t.amount_open end as amount_open
+						,sum(case when @currency=t.currency_name and @currency<>'EUR' then t.amount_open
+							else t.amount_open end) over (order by isnull(t.due_date,'2099-01-01'),t.invoice_number ) as amount_openCum
+					FROM
+						tb_Netsuite_Invoice  t
+					WHERE
+						1=1 --t.CompanyID=@CompanyID
+						AND	t.customer_id = @customer_id
+				)
+
+				SELECT TOP 1  @typematch='SalesinvoiceListSum'
+							 ,@ReferenceXML=(SELECT t.invoice_number FROM s t WHERE t.RowNumber<=s.RowNumber FOR XML PATH(''),ROOT('Invoices'))
+							FROM s WHERE amount_openCum=@amount;
+
+
+		END
+
+		-- Als er een referentie is gevonden: Haal glcode erbij.
+		IF @Reference is not null or @ReferenceXML is not null
+		BEGIN
+			SET @glcode=@DefaultGLCodecustomer_id
+			--isnull((select max(t.OffSetLedgerAccountNumber) from tb_Bank_Synch_customer_id_amount_open t
+			--						where CompanyID=@CompanyID
+			--						AND	t.customer_id=@customer_id)
+			--					,@DefaultGLCodecustomer_id)
+		END
+
+		-- Is er een match op sales gevonden en ook een crediteur bekend: Set vendor_id=leeg
+		if @typematch like 'Sales%' and @vendor_id is not null
+			set @vendor_id=null
+	END
+
+	-- Als er zowel een crediteur als debiteur gekoppeld is aan een relatie en geen matching op referentie, kijk dan naar bedrag of het een debiteur is of crediteur
+	if (@vendor_id is not null and @typematch not like 'Purchase%') and (@customer_id is not null and @typematch not like 'Sales%' )
+	begin
+		if @amount<0
+		begin
+			set @customer_id=null
+			set @GLCode=@defaultglcodevendor_id
+		end
+		else
+		begin
+			set @vendor_id=null
+			set @GLCode=@defaultglcodecustomer_id
+		end
+	end
+
+
+	-- select 'Workflowregels'
+	---- Hier is alleen via bankrekening herkend, geen openstaande post is gekoppeld. Er is een matchingsregel, gebruik deze dan.
+	--IF (@typematch='IBANWF' or @typematch='IBAN' or @typematch='IBANSalesInvoice' or (@typematch='Salesinvoice' and @reference is null))
+	--	and exists( SELECT *
+	--			FROM
+	--				vw_Bank_Matching m
+	--			WHERE
+	--					m.CompanyID=@CompanyID
+	--				AND
+	--					m.BankAccount=@BankAccount
+	--				AND
+	--				(
+	--					m.BankaccountRelation = @IBAN
+	--					OR
+	--					m.BankaccountRelation is null
+	--				)
+	--				AND
+	--				(
+	--					@Description LIKE '%'+m.[Description]+'%'
+	--					OR
+	--					[Description] is null
+	--				)
+	--				AND
+	--				(
+	--					Amount is null
+	--					or
+	--					(isnull(AmountCompare,'')='=' and @amount=Amount)
+	--					or
+	--					(AmountCompare='<' and @amount<Amount)
+	--					or
+	--					(AmountCompare='>' and @amount>Amount)
+	--					or
+	--					(AmountCompare='<>' and @amount between Amount and AmountTo)
+
+	--				)
+	--				AND
+	--				(
+	--					m.PaymentDirection='A'
+	--					OR
+	--						(
+	--							m.PaymentDirection='P'
+	--							AND @amount > 0
+	--						)
+	--						OR
+	--						(
+	--							m.PaymentDirection='N'
+	--							AND @amount<0
+	--						)
+	--				)
+	--				AND
+	--				(
+	--					m.MutationCode is null
+	--					OR
+	--					m.MutationCode=@Mutationcode
+	--				)
+	--				AND (
+	--						m.Kenmerk is null
+	--						OR
+	--						@kenmerk like '%' + m.Kenmerk+'%'
+	--					)
+	--				AND (
+	--						m.Betalingskenmerk is null
+	--						OR
+	--						@Betalingskenmerk like '%' + m.Betalingskenmerk+'%'
+	--					)
+	--				AND (
+	--						m.Machtiging is null
+	--						OR
+	--						@Machtiging like '%' + m.Machtiging+'%'
+	--					)
+	--				AND (
+	--						m.Incassant is null
+	--						OR
+	--						@Incassant like '%' + m.Incassant+'%'
+	--					)
+	--)
+
+	--BEGIN
+	--	set @typematch=null
+	--END
+
+
+	--IF @typematch is null
+	--BEGIN
+	--	SELECT
+	--		@glcode=m.GLcode,
+	--		@typematch='MATCH',
+	--		@vatcode=VATcode,
+	--		@vendor_id=m.vendor_id,
+	--		@customer_id=m.customer_id,
+	--		@costunit=m.CostUnit,
+	--		@costCenter=m.CostCenter,
+	--		@WorkflowNumber=m.WorkflowNumber,
+	--		@WorkflowID=m.WorkflowID
+
+	--	FROM
+	--		vw_Bank_Matching m
+	--	WHERE
+	--			m.CompanyID=@CompanyID
+	--		AND
+	--			m.BankAccount=@BankAccount
+	--		AND
+	--		(
+	--			m.BankaccountRelation = @IBAN
+	--			OR
+	--			m.BankaccountRelation is null
+	--		)
+	--		AND
+	--		(
+	--			@Description LIKE '%'+m.[Description]+'%'
+	--			OR
+	--			[Description] is null
+	--		)
+	--		AND
+	--		(
+	--			Amount is null
+	--			or
+	--			(isnull(AmountCompare,'')='=' and @amount=Amount)
+	--			or
+	--			(AmountCompare='<' and @amount<Amount)
+	--			or
+	--			(AmountCompare='>' and @amount>Amount)
+	--			or
+	--			(AmountCompare='<>' and @amount between Amount and AmountTo)
+	--		)
+	--		AND
+	--		(
+	--			m.PaymentDirection='A'
+	--			OR
+	--				(
+	--					m.PaymentDirection='P'
+	--					AND @amount > 0
+	--				)
+	--				OR
+	--				(
+	--					m.PaymentDirection='N'
+	--					AND @amount<0
+	--				)
+	--		)
+	--		AND
+	--		(
+	--			m.MutationCode is null
+	--			OR
+	--			m.MutationCode=@Mutationcode
+	--		)
+	--		AND (
+	--				m.Kenmerk is null
+	--				OR
+	--				@kenmerk like '%' + m.Kenmerk+'%'
+	--			)
+	--		AND (
+	--				m.Betalingskenmerk is null
+	--				OR
+	--				@Betalingskenmerk like '%' + m.Betalingskenmerk+'%'
+	--			)
+	--		AND (
+	--				m.Machtiging is null
+	--				OR
+	--				@Machtiging like '%' + m.Machtiging+'%'
+	--			)
+	--		AND (
+	--				m.Incassant is null
+	--				OR
+	--				@Incassant like '%' + m.Incassant+'%'
+	--			)
+	--END
+
+	IF @typematch is null
+	BEGIN
+		-- Hier is nog niets gevonden, probeer nog op factuurnummer bij openstaande posten.
+		SELECT @typematch = 'SalesInvoice'
+				, @GLCode = @DefaultGLCodecustomer_id --ISNULL(OffSetLedgerAccountNumber, @DefaultGLCodecustomer_id)
+				, @Newcustomer=case when @customer_id is null then 1 else 0 end
+				, @customer_id = customer_id
+				, @Reference =CASE WHEN @amount = amount_open THEN invoice_number ELSE null END
+			FROM
+				tb_Netsuite_Invoice c
+			WHERE
+				1=1 --CompanyID=@CompanyID
+				AND	@customer_id is null
+				AND LEN(LTRIM(RTRIM(invoice_number))) >= @MinNumberLength		-- BANK ENGINE
+				AND	@description like '%' + ltrim(rtrim(invoice_number)) + '%'
+	END
+
+
+	-- INDIEN NIET GEVONDEN => DEFAULT REKENING NIET TOEGEWEZEN
+	IF @GLCode is null
+	BEGIN
+		if @customer_id is not null
+					SET @glcode=@DefaultGLCodecustomer_id
+					--isnull((select max(t.OffSetLedgerAccountNumber) from tb_Bank_Synch_customer_id_amount_open t
+					--				where CompanyID=@CompanyID
+					--				AND	t.customer_id=@customer_id)
+					--			,@DefaultGLCodecustomer_id)
+
+		IF @GLCode is null
+		SELECT
+				@glcode=glcode
+			FROM
+				vw_Bank_Journal
+			WHERE
+					CompanyID=@CompanyID
+				AND
+					Journal=@journal
+
+	END
+
+
+
+
+
+
+
+
+
+	INSERT INTO @retreport
+
+		(
+			GLCode,
+			vendor_id,
+			customer_id,
+			Costcenter,
+			CostUnit,
+			Reference,
+			typematch,
+			NewCustomer,
+			VatCode,
+			ReferenceXML,
+			WorkflowNumber,
+			WorkflowID
+
+		)
+		VALUES
+		(
+			@GLCode,
+			@vendor_id,
+			@customer_id,
+			@Costcenter,
+			@CostUnit,
+			@Reference,
+			@typematch,
+			@NewCustomer,
+			@vatcode,
+			@ReferenceXML,
+			@WorkflowNumber,
+			@WorkflowID
+
+		)
+--	select * from @retreport
+	RETURN
+END
+GO
