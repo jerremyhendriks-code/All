@@ -73,7 +73,7 @@ IF NOT EXISTS (SELECT 1 FROM vw_Bank_BankAccounts bank
                  AND bank.DefaultGLCodeCreditor IS NOT NULL)
 BEGIN
     SET @msg = N'No bank account of subsidiary ' + @Company + N' with Company, GLCodeBank and DefaultGLCodeCreditor '
-             + N'in tb_Bank_Bankaccount_Settings' + ISNULL(N' (@OwnIBAN = ' + @OwnIBAN + N')', N'') + N'.';
+             + N'in vw_Bank_BankAccounts' + ISNULL(N' (@OwnIBAN = ' + @OwnIBAN + N')', N'') + N'.';
     THROW 50001, @msg, 1;
 END
 
