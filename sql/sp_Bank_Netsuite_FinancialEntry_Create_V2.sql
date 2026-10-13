@@ -38,7 +38,7 @@ GO
        the cursor moves on.
     3. Report: count per scenario/result, then the details of the vendor payments and errors.
 
-    NetSuite internal IDs per bank account (vw_Bank_BankAccounts / tb_Bank_Bankaccount_Settings):
+    NetSuite internal IDs per bank account (hard-coded per IBAN in vw_Bank_BankAccounts):
         Company               = subsidiary ID
         GLCodeBank            = bank GL account ID   -> accountId
         DefaultGLCodeCreditor = AP account ID        -> apAcctId
