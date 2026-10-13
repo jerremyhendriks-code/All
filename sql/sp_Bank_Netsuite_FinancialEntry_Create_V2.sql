@@ -11,7 +11,7 @@ GO
     (backup) until this one replaces it.
 
     Bank engine for Ellomay: turns open bank transactions (tb_Bank_Transactions,
-    BPA_Status = 0) into NetSuite records. Three scenarios, decided by fn_Bank_Match:
+    BPA_Status = 0) into NetSuite records. Three scenarios, decided by fn_Bank_Match_V2:
 
         typematch                       Matched_Creditor  Matched_Debtor  Matched_Reference  -> scenario
         PurchaseInvoice / ...Amount     filled            -               bill number        -> VENDORPAYMENT    (built)
@@ -21,7 +21,7 @@ GO
 
     Transactions in a scenario that isn't built yet stay BPA_Status = 0.
 
-    1. Match all open transactions of @BPA_Company with fn_Bank_Match (fills Matched_*).
+    1. Match all open transactions of @BPA_Company with fn_Bank_Match_V2 (fills Matched_*).
     2. A cursor walks the open transactions, oldest first; one NetSuite record per transaction.
        VENDORPAYMENT:
        - Look up the vendor bill by Matched_Creditor + bill number (Matched_Reference)
@@ -76,7 +76,7 @@ SET
 ,	Matched_VatCode      = m.VatCode
 ,	Matched_ReferenceXML = m.ReferenceXML
 FROM tb_Bank_Transactions Transactions
-CROSS APPLY dbo.fn_Bank_Match('BANK', Transactions.BPA_EntryID, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL) m
+CROSS APPLY dbo.fn_Bank_Match_V2('BANK', Transactions.BPA_EntryID, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL) m
 WHERE Transactions.BPA_Status = 0
 	AND Transactions.BPA_Company = @BPA_Company
 	AND (@BPA_EntryID IS NULL OR Transactions.BPA_EntryID = @BPA_EntryID);

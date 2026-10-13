@@ -2,7 +2,7 @@
     Test data for the whole bank chain, one bank transaction per scenario:
 
         tb_Rabobank_Transaction --sp_Bank_Transaction_Rabobank_Copy--> tb_Bank_Transactions
-            --sp_Bank_Netsuite_FinancialEntry_Create (fn_Bank_Match)--> NetSuite records
+            --sp_Bank_Netsuite_FinancialEntry_Create_V2 (fn_Bank_Match_V2)--> NetSuite records
 
     Inserts:
     - tb_Netsuite_VendorBill  one test bill    number BPT-VB-<tag>, amount_open = @TestAmount
@@ -261,8 +261,8 @@ FROM (VALUES ('VENDORPAYMENT',   'BPATEST-VP-' + @run),
              ('CUSTOMERPAYMENT', 'BPATEST-CP-' + @run),
              ('JOURNALENTRY',    'BPATEST-JE-' + @run)) s(Expected, EntryReference)
 LEFT JOIN tb_Bank_Transactions t ON t.BPA_Origin = @OwnIBAN AND t.BPA_Reference = s.EntryReference
-OUTER APPLY dbo.fn_Bank_Match('BANK', t.BPA_EntryID, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL) m
-CROSS APPLY (SELECT CASE      -- same rule as sp_Bank_Netsuite_FinancialEntry_Create
+OUTER APPLY dbo.fn_Bank_Match_V2('BANK', t.BPA_EntryID, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL) m
+CROSS APPLY (SELECT CASE      -- same rule as sp_Bank_Netsuite_FinancialEntry_Create_V2
                  WHEN t.BPA_EntryID IS NULL
                      THEN 'not copied to tb_Bank_Transactions'
                  WHEN m.typematch LIKE 'Purchase%' AND m.vendor_id IS NOT NULL AND LTRIM(RTRIM(m.Reference)) <> ''
@@ -280,7 +280,7 @@ UNION ALL
 SELECT 'invoice', @INV_InvoiceID, @InvoiceNo, @INV_CustomerID, @INV_CustomerName, @INV_Subsidiary, @INV_Currency;
 
 PRINT N'Test run ' + @run + N' on ' + @OwnIBAN + N'. Next:';
-PRINT N'    EXEC sp_Bank_Netsuite_FinancialEntry_Create ''' + @Company + N''', @Preview = 1;';
+PRINT N'    EXEC sp_Bank_Netsuite_FinancialEntry_Create_V2 ''' + @Company + N''', @Preview = 1;';
 GO
 
 /*

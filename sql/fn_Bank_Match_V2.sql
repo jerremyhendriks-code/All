@@ -1,12 +1,13 @@
 USE [BPAStaging]
 GO
-/****** Object:  UserDefinedFunction [dbo].[fn_Bank_Match]    Script Date: 13/10/2026 14:27:47 ******/
+/****** Object:  UserDefinedFunction [dbo].[fn_Bank_Match_V2]    Script Date: 13/10/2026 14:27:47 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 /*
-    Changes for the bank engine (sp_Bank_Netsuite_FinancialEntry_Create), marked "-- BANK ENGINE:":
+    fn_Bank_Match_V2: copy of fn_Bank_Match (which stays as it is, as a backup) with
+    changes for the bank engine (sp_Bank_Netsuite_FinancialEntry_Create_V2), marked "-- BANK ENGINE:":
     1. Money out without a vendor from the IBAN: find the vendor by a vendor bill number in the
        description (only when exactly one vendor has a bill with a number in the description).
     2. Vendor bills: the bank amount of a payment is negative, amount_open is positive, so compare
@@ -18,7 +19,7 @@ GO
     5. A document number only counts when it has at least @MinNumberLength (4) characters, so numbers
        like '1' or an empty number don't match every description.
 */
-ALTER function [dbo].[fn_Bank_Match]
+CREATE OR ALTER FUNCTION [dbo].[fn_Bank_Match_V2]
 	(
 
 --declare
