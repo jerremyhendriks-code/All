@@ -192,14 +192,14 @@ BEGIN TRANSACTION;
 INSERT INTO tb_Netsuite_VendorBill
 (
     BPA_Origin, BPA_Direction, BPA_Company, BPA_Syscreator, BPA_Reference,
-    id, vendor_bill_id, vendor_bill_number, vendor_id, vendor_name,
+    vendor_bill_id, vendor_bill_number, vendor_id, vendor_name,
     invoice_total, amount_open, currency_id, currency_name, subsidiary_id,
     invoice_date, due_date, memo
 )
 VALUES
 (
     N'TEST', N'FROM', @Company, N'BPA-TEST', @BillNo,
-    @VB_BillID, @VB_BillID, @BillNo, @VB_VendorID, @VB_VendorName,
+    @VB_BillID, @BillNo, @VB_VendorID, @VB_VendorName,
     @TestAmount, @TestAmount, @VB_CurrencyID, @VB_Currency, @VB_Subsidiary,
     CONVERT(varchar(10), GETDATE(), 23), CONVERT(varchar(10), GETDATE(), 23), N'BPA bank engine test'
 );
