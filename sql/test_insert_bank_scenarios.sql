@@ -5,8 +5,8 @@
             --sp_Bank_Netsuite_FinancialEntry_Create (fn_Bank_Match)--> NetSuite records
 
     Inserts:
-    - tb_Netsuite_VendorBill  one test bill    number BPATEST-VB-<tag>,  amount_open = @TestAmount
-    - tb_Netsuite_Invoice     one test invoice number BPATEST-INV-<tag>, amount_open = @TestAmount
+    - tb_Netsuite_VendorBill  one test bill    number BPT-VB-<tag>, amount_open = @TestAmount
+    - tb_Netsuite_Invoice     one test invoice number BPT-IN-<tag>, amount_open = @TestAmount
     - tb_Rabobank_Transaction three transactions on our own account @OwnIBAN:
         1. VENDORPAYMENT    money out, -@TestAmount, description = the test bill number
         2. CUSTOMERPAYMENT  money in,  +@TestAmount, description = the test invoice number
@@ -22,8 +22,9 @@
     By default the script picks an open bill and invoice from the staging tables
     (the latest loaded row of each), so they exist in NetSuite.
 
-    Every run uses new numbers and entryReferences (<run> = yyyyMMddHHmmss, <tag> = the
-    same in letters, so no digits end up in a description), so the script can be run again. Cleanup is at the bottom.
+    Every run uses new numbers and entryReferences (<run> = yyyyMMddHHmmss, <tag> = MMddHHmmss
+    in letters, so no digits end up in a description), so the script can be run again.
+    Cleanup is at the bottom.
 
     Note: sp_Bank_Transaction_Rabobank_Copy copies ALL waiting Rabobank rows of
     @OwnIBAN, not only these three.
@@ -48,12 +49,13 @@ DECLARE @INV_InvoiceID nvarchar(100)  = NULL;
 -- ===================
 
 DECLARE @run      varchar(14) = FORMAT(GETDATE(), 'yyyyMMddHHmmss');
--- The descriptions get the run as letters (0 -> A ... 9 -> J): fn_Bank_Match matches a document
+-- The document numbers get the run as letters (0 -> A ... 9 -> J): fn_Bank_Match matches a document
 -- number anywhere in the description, and the staging tables hold numbers like '1'.
-DECLARE @tag      varchar(14) = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(@run,
+-- Month to second only: fn_Bank_Match returns Reference as nvarchar(20).
+DECLARE @tag      varchar(10) = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(RIGHT(@run, 10),
                         '0', 'A'), '1', 'B'), '2', 'C'), '3', 'D'), '4', 'E'), '5', 'F'), '6', 'G'), '7', 'H'), '8', 'I'), '9', 'J');
-DECLARE @BillNo   nvarchar(60) = N'BPATEST-VB-'  + @tag;
-DECLARE @InvoiceNo nvarchar(60) = N'BPATEST-INV-' + @tag;
+DECLARE @BillNo   nvarchar(20) = N'BPT-VB-' + @tag;      -- 17 characters
+DECLARE @InvoiceNo nvarchar(20) = N'BPT-IN-' + @tag;      -- 17 characters
 DECLARE @JournalDescription nvarchar(255) = N'BPA test bankkosten ' + @tag;
 DECLARE @VB_VendorID nvarchar(100), @VB_VendorName nvarchar(255), @VB_Subsidiary nvarchar(100),
         @VB_CurrencyID nvarchar(100), @VB_Currency nvarchar(100),
@@ -92,7 +94,7 @@ END
            ROW_NUMBER() OVER (PARTITION BY v.vendor_bill_id
                               ORDER BY v.BPA_Syscreated DESC, v.BPA_EntryID DESC) AS rn
     FROM tb_Netsuite_VendorBill v
-    WHERE v.vendor_bill_number NOT LIKE 'BPATEST-%'
+    WHERE v.vendor_bill_number NOT LIKE 'BPT-VB-%' AND v.vendor_bill_number NOT LIKE 'BPATEST-%'
 )
 SELECT TOP (1)
        @VB_BillID     = b.vendor_bill_id,
@@ -136,7 +138,7 @@ IF @VB_Subsidiary <> @Company
            ROW_NUMBER() OVER (PARTITION BY i.invoice_id
                               ORDER BY i.BPA_Syscreated DESC, i.BPA_EntryID DESC) AS rn
     FROM tb_Netsuite_Invoice i
-    WHERE i.invoice_number NOT LIKE 'BPATEST-%'
+    WHERE i.invoice_number NOT LIKE 'BPT-IN-%' AND i.invoice_number NOT LIKE 'BPATEST-%'
 )
 SELECT TOP (1)
        @INV_InvoiceID    = x.invoice_id,
@@ -295,8 +297,8 @@ DELETE FROM tb_Netsuite_VendorPayment
 
 DELETE FROM tb_Bank_Transactions    WHERE BPA_Reference LIKE 'BPATEST-%';
 DELETE FROM tb_Rabobank_Transaction WHERE entryReference LIKE 'BPATEST-%';
-DELETE FROM tb_Netsuite_VendorBill  WHERE vendor_bill_number LIKE 'BPATEST-VB-%';
-DELETE FROM tb_Netsuite_Invoice     WHERE invoice_number LIKE 'BPATEST-INV-%';
+DELETE FROM tb_Netsuite_VendorBill  WHERE vendor_bill_number LIKE 'BPT-VB-%' OR vendor_bill_number LIKE 'BPATEST-VB-%';
+DELETE FROM tb_Netsuite_Invoice     WHERE invoice_number LIKE 'BPT-IN-%' OR invoice_number LIKE 'BPATEST-INV-%';
 
 COMMIT TRANSACTION;
 */
