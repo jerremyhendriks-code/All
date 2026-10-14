@@ -18,6 +18,9 @@ GO
        Reference nvarchar(60) (was 20: a longer document number stopped the whole matching run).
     5. A document number only counts when it has at least @MinNumberLength (4) characters, so numbers
        like '1' or an empty number don't match every description.
+    6. A document number only counts as a whole word in the description / payment reference: no letter
+       or digit directly before or after it ('1293' doesn't match '10011293', 'INV-1293 ' does match).
+    7. Only bills / invoices of the bank account's own subsidiary (Company in vw_Bank_BankAccounts).
 */
 CREATE OR ALTER FUNCTION [dbo].[fn_Bank_Match_V2]
 	(
@@ -164,6 +167,10 @@ Declare @marge as float
 declare @GLCode varchar(9)
 declare @reference varchar(60)
 DECLARE @MinNumberLength int = 4		-- BANK ENGINE: shorter document numbers are not looked for in the description
+-- BANK ENGINE: description / payment reference with a space on both sides, so a document number can be
+-- matched as a whole: no letter or digit directly before or after it ('1293' doesn't match '10011293')
+DECLARE @DescMatch    nvarchar(300) = N' ' + ISNULL(@description, N'') + N' '
+DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N' '
 	-- Haal hier de default waardes op voor deze bankrekening.
 	SELECT
 		@Journal=Journal
@@ -276,8 +283,9 @@ DECLARE @MinNumberLength int = 4		-- BANK ENGINE: shorter document numbers are n
 				--CompanyID=@CompanyID
 				--AND
 				LEN(LTRIM(RTRIM(i.invoice_number))) >= @MinNumberLength		-- BANK ENGINE
+				AND (@Company IS NULL OR CAST(i.subsidiary_id AS nvarchar(100)) = @Company)		-- BANK ENGINE: same subsidiary as the bank account
 				AND
-				@description like '%' + ltrim(rtrim(i.invoice_number)) + '%'
+				@DescMatch like '%[^0-9A-Za-z]' + REPLACE(REPLACE(REPLACE(ltrim(rtrim(i.invoice_number)), '[', '[[]'), '_', '[_]'), '%', '[%]') + '[^0-9A-Za-z]%'
 	END
 
 
@@ -395,7 +403,8 @@ DECLARE @MinNumberLength int = 4		-- BANK ENGINE: shorter document numbers are n
 			tb_Netsuite_vendorBill v
 		WHERE
 			LEN(LTRIM(RTRIM(v.vendor_bill_number))) >= @MinNumberLength
-			AND @description like '%' + ltrim(rtrim(v.vendor_bill_number)) + '%'
+			AND (@Company IS NULL OR CAST(v.subsidiary_id AS nvarchar(100)) = @Company)		-- BANK ENGINE: same subsidiary as the bank account
+			AND @DescMatch like '%[^0-9A-Za-z]' + REPLACE(REPLACE(REPLACE(ltrim(rtrim(v.vendor_bill_number)), '[', '[[]'), '_', '[_]'), '%', '[%]') + '[^0-9A-Za-z]%'
 	END
 
 	-- Indien er een crediteur is gevonden, zoek dan ook de inkoopfactuur erbij.
@@ -417,7 +426,8 @@ DECLARE @MinNumberLength int = 4		-- BANK ENGINE: shorter document numbers are n
 			1=1--CompanyID=@CompanyID
 			AND vendor_id = @vendor_id
 			AND LEN(LTRIM(RTRIM(v.vendor_bill_number))) >= @MinNumberLength		-- BANK ENGINE
-			AND @description like '%' + ltrim(rtrim(v.vendor_bill_number)) + '%'
+			AND (@Company IS NULL OR CAST(v.subsidiary_id AS nvarchar(100)) = @Company)		-- BANK ENGINE: same subsidiary as the bank account
+			AND @DescMatch like '%[^0-9A-Za-z]' + REPLACE(REPLACE(REPLACE(ltrim(rtrim(v.vendor_bill_number)), '[', '[[]'), '_', '[_]'), '%', '[%]') + '[^0-9A-Za-z]%'
 
 
 
@@ -437,6 +447,7 @@ DECLARE @MinNumberLength int = 4		-- BANK ENGINE: shorter document numbers are n
 				tb_Netsuite_vendorBill v --	[001].dbo._Orbis_Crediteur_Openstaand
 			WHERE
 				v.vendor_id = @vendor_id
+				AND (@Company IS NULL OR CAST(v.subsidiary_id AS nvarchar(100)) = @Company)		-- BANK ENGINE: same subsidiary as the bank account
 				and (	(ABS(ABS(@amount) - v.amount_open) < 0.005 and @currency='EUR')
 						or
 						(ABS(ABS(@amount) - v.amount_open) < 0.005 and @currency=v.currency_name)
@@ -480,10 +491,11 @@ DECLARE @MinNumberLength int = 4		-- BANK ENGINE: shorter document numbers are n
 				1=1 --and CompanyID=@CompanyID
 				AND	@customer_id is null
 				AND LEN(LTRIM(RTRIM(c.invoice_number))) >= @MinNumberLength		-- BANK ENGINE
+				AND (@Company IS NULL OR CAST(c.subsidiary_id AS nvarchar(100)) = @Company)		-- BANK ENGINE: same subsidiary as the bank account
 				AND
-				(	@description like '%' + ltrim(rtrim(c.invoice_number)) + '%'
+				(	@DescMatch like '%[^0-9A-Za-z]' + REPLACE(REPLACE(REPLACE(ltrim(rtrim(c.invoice_number)), '[', '[[]'), '_', '[_]'), '%', '[%]') + '[^0-9A-Za-z]%'
 						OR
-					@betalingskenmerk like '%' + ltrim(rtrim(c.invoice_number)) + '%'
+					@KenmerkMatch like '%[^0-9A-Za-z]' + REPLACE(REPLACE(REPLACE(ltrim(rtrim(c.invoice_number)), '[', '[[]'), '_', '[_]'), '%', '[%]') + '[^0-9A-Za-z]%'
 				)
 	end
 
@@ -511,9 +523,10 @@ DECLARE @MinNumberLength int = 4		-- BANK ENGINE: shorter document numbers are n
 			1=1 --CompanyID=@CompanyID
 			AND	c.customer_id = @customer_id
 			AND LEN(LTRIM(RTRIM(c.invoice_number))) >= @MinNumberLength		-- BANK ENGINE
-			AND ( @description like '%' + ltrim(rtrim(c.invoice_number)) + '%'
+			AND (@Company IS NULL OR CAST(c.subsidiary_id AS nvarchar(100)) = @Company)		-- BANK ENGINE: same subsidiary as the bank account
+			AND ( @DescMatch like '%[^0-9A-Za-z]' + REPLACE(REPLACE(REPLACE(ltrim(rtrim(c.invoice_number)), '[', '[[]'), '_', '[_]'), '%', '[%]') + '[^0-9A-Za-z]%'
 					OR
-				 @betalingskenmerk like '%' + ltrim(rtrim(c.invoice_number)) + '%'
+				 @KenmerkMatch like '%[^0-9A-Za-z]' + REPLACE(REPLACE(REPLACE(ltrim(rtrim(c.invoice_number)), '[', '[[]'), '_', '[_]'), '%', '[%]') + '[^0-9A-Za-z]%'
 				)
 
 		--set @marge=0
@@ -554,6 +567,7 @@ DECLARE @MinNumberLength int = 4		-- BANK ENGINE: shorter document numbers are n
 						tb_Netsuite_Invoice c
 				WHERE
 						c.customer_id=@customer_id
+						AND (@Company IS NULL OR CAST(c.subsidiary_id AS nvarchar(100)) = @Company)		-- BANK ENGINE: same subsidiary as the bank account
 						AND (
 								(c.amount_open=@amount and @currency='EUR')
 								OR
@@ -586,10 +600,11 @@ DECLARE @MinNumberLength int = 4		-- BANK ENGINE: shorter document numbers are n
 						1=1 --CompanyID=@CompanyID
 						AND	t.customer_id = @customer_id
 						AND LEN(LTRIM(RTRIM(t.invoice_number))) >= @MinNumberLength		-- BANK ENGINE
+						AND (@Company IS NULL OR CAST(t.subsidiary_id AS nvarchar(100)) = @Company)		-- BANK ENGINE: same subsidiary as the bank account
 						AND
-						(	@description like '%'+ltrim(rtrim(t.invoice_number))+'%'
+						(	@DescMatch like '%[^0-9A-Za-z]' + REPLACE(REPLACE(REPLACE(ltrim(rtrim(t.invoice_number)), '[', '[[]'), '_', '[_]'), '%', '[%]') + '[^0-9A-Za-z]%'
 							OR
-							@betalingskenmerk like '%' + ltrim(rtrim(t.invoice_number)) + '%'
+							@KenmerkMatch like '%[^0-9A-Za-z]' + REPLACE(REPLACE(REPLACE(ltrim(rtrim(t.invoice_number)), '[', '[[]'), '_', '[_]'), '%', '[%]') + '[^0-9A-Za-z]%'
 						)
 					)
 			SELECT TOP 1  @typematch='SalesinvoiceListDescription'
@@ -618,6 +633,7 @@ DECLARE @MinNumberLength int = 4		-- BANK ENGINE: shorter document numbers are n
 					WHERE
 						1=1 --t.CompanyID=@CompanyID
 						AND	t.customer_id = @customer_id
+						AND (@Company IS NULL OR CAST(t.subsidiary_id AS nvarchar(100)) = @Company)		-- BANK ENGINE: same subsidiary as the bank account
 				)
 
 				SELECT TOP 1  @typematch='SalesinvoiceListSum'
@@ -839,7 +855,8 @@ DECLARE @MinNumberLength int = 4		-- BANK ENGINE: shorter document numbers are n
 				1=1 --CompanyID=@CompanyID
 				AND	@customer_id is null
 				AND LEN(LTRIM(RTRIM(invoice_number))) >= @MinNumberLength		-- BANK ENGINE
-				AND	@description like '%' + ltrim(rtrim(invoice_number)) + '%'
+				AND (@Company IS NULL OR CAST(subsidiary_id AS nvarchar(100)) = @Company)		-- BANK ENGINE: same subsidiary as the bank account
+				AND	@DescMatch like '%[^0-9A-Za-z]' + REPLACE(REPLACE(REPLACE(ltrim(rtrim(invoice_number)), '[', '[[]'), '_', '[_]'), '%', '[%]') + '[^0-9A-Za-z]%'
 	END
 
 
