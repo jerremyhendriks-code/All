@@ -49,13 +49,15 @@ FROM dbo.tb_Bank_BankAccounts b
 LEFT JOIN (VALUES
     -- Bank GL accounts and subsidiaries from tb_Netsuite_Account (account name) and tb_Companies.
     -- AP 111 = 200000001 Trade payables, AR 119 = 121000001 Accounts Receivable: the same for every
-    -- subsidiary until we know otherwise. Suspense accounts (UnknownCreditor / UnknownDebtor) not known
-    -- yet: journal entries without a relation are skipped until they are filled in.
+    -- subsidiary until we know otherwise.
+    -- Suspense account (UnknownCreditor / UnknownDebtor, journal entries without a relation):
+    -- TEMPORARY sandbox test account 3429 = 134000008 Other receivables account, for money in and out.
+    -- Replace it with the account Ellomay finance chooses before going live.
     --  IBAN                    Company  GLCodeBank  DefaultGLCodeCreditor  DefaultGLCodeDebtor  UnknownCreditor  UnknownDebtor
-    (  'NL76RABO0103275460',    '89',    '3427',     '111',                 '119',               NULL,            NULL )   -- GGG:  Rabobank 0103 2754 60 GGG Euro  (111001601)
-,   (  'NL74RABO0317955799',    '93',    '3428',     '111',                 '119',               NULL,            NULL )   -- GGOT: Rabobank 0317 9557 99 GGOT Euro (111001602)
-,   (  'NL45RABO0306680653',    '94',    '3527',     '111',                 '119',               NULL,            NULL )   -- GGB:  Rabobank 0306 6806 53 GGB Euro  (111001603)
-,   (  'NL16RABO3633747710',    '94',    '3528',     '111',                 '119',               NULL,            NULL )   -- GGB:  Rabobank 3633 7477 10 GGB Euro  (111002603)
+    (  'NL76RABO0103275460',    '89',    '3427',     '111',                 '119',               '3429',          '3429' )   -- GGG:  Rabobank 0103 2754 60 GGG Euro  (111001601)
+,   (  'NL74RABO0317955799',    '93',    '3428',     '111',                 '119',               '3429',          '3429' )   -- GGOT: Rabobank 0317 9557 99 GGOT Euro (111001602)
+,   (  'NL45RABO0306680653',    '94',    '3527',     '111',                 '119',               '3429',          '3429' )   -- GGB:  Rabobank 0306 6806 53 GGB Euro  (111001603)
+,   (  'NL16RABO3633747710',    '94',    '3528',     '111',                 '119',               '3429',          '3429' )   -- GGB:  Rabobank 3633 7477 10 GGB Euro  (111002603)
 ) s (IBAN, Company, GLCodeBank, DefaultGLCodeCreditor, DefaultGLCodeDebtor, UnknownCreditor, UnknownDebtor)
     ON s.IBAN = b.IBAN;
 GO
