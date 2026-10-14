@@ -21,6 +21,10 @@ GO
     6. A document number only counts as a whole word in the description / payment reference: no letter
        or digit directly before or after it ('1293' doesn't match '10011293', 'INV-1293 ' does match).
     7. Only bills / invoices of the bank account's own subsidiary (Company in vw_Bank_BankAccounts).
+    8. Bills / invoices come from tb_Bank_Synch_Netsuite_VendorBill_Open / _Invoice_Open (was
+       tb_Netsuite_VendorBill / tb_Netsuite_Invoice): one row per open document (latest load), with
+       amount_open minus what unsent payments already pay. Filled by
+       sp_Bank_Netsuite_Synchronise_Company <subsidiary>, 'OPEN', which the engine runs first.
 */
 CREATE OR ALTER FUNCTION [dbo].[fn_Bank_Match_V2]
 	(
@@ -278,7 +282,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 				, @customer_id = i.customer_id
 
 			FROM
-				tb_Netsuite_Invoice i
+				tb_Bank_Synch_Netsuite_Invoice_Open i
 			WHERE
 				--CompanyID=@CompanyID
 				--AND
@@ -400,7 +404,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 		SELECT
 			@vendor_id = CASE WHEN COUNT(DISTINCT v.vendor_id) = 1 THEN MAX(v.vendor_id) END
 		FROM
-			tb_Netsuite_vendorBill v
+			tb_Bank_Synch_Netsuite_VendorBill_Open v
 		WHERE
 			LEN(LTRIM(RTRIM(v.vendor_bill_number))) >= @MinNumberLength
 			AND (@Company IS NULL OR CAST(v.subsidiary_id AS nvarchar(100)) = @Company)		-- BANK ENGINE: same subsidiary as the bank account
@@ -421,7 +425,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 							ELSE null END
 			, @GLCode = @DefaultGLCodevendor_id--ISNULL(OffSetLedgerAccountNumber, @DefaultGLCodevendor_id)
 		from
-			tb_Netsuite_vendorBill v --	[001].dbo._Orbis_Crediteur_Openstaand
+			tb_Bank_Synch_Netsuite_VendorBill_Open v --	[001].dbo._Orbis_Crediteur_Openstaand
 		where
 			1=1--CompanyID=@CompanyID
 			AND vendor_id = @vendor_id
@@ -444,7 +448,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 									END)
 				, @GLCode = @DefaultGLCodevendor_id --MAX(ISNULL(OffSetLedgerAccountNumber, @DefaultGLCodevendor_id))
 			FROM
-				tb_Netsuite_vendorBill v --	[001].dbo._Orbis_Crediteur_Openstaand
+				tb_Bank_Synch_Netsuite_VendorBill_Open v --	[001].dbo._Orbis_Crediteur_Openstaand
 			WHERE
 				v.vendor_id = @vendor_id
 				AND (@Company IS NULL OR CAST(v.subsidiary_id AS nvarchar(100)) = @Company)		-- BANK ENGINE: same subsidiary as the bank account
@@ -486,7 +490,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 				, @customer_id = c.customer_id
 				, @Reference =CASE WHEN @amount = c.amount_open THEN c.invoice_number ELSE null END
 			FROM
-				tb_Netsuite_Invoice c
+				tb_Bank_Synch_Netsuite_Invoice_Open c
 			WHERE
 				1=1 --and CompanyID=@CompanyID
 				AND	@customer_id is null
@@ -518,7 +522,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 
 							ELSE null END
 		FROM
-			tb_Netsuite_Invoice c
+			tb_Bank_Synch_Netsuite_Invoice_Open c
 		WHERE
 			1=1 --CompanyID=@CompanyID
 			AND	c.customer_id = @customer_id
@@ -564,7 +568,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 				SELECT @typematch='SalesinvoiceAmount'
 						,@reference=max(c.invoice_number)
 				FROM
-						tb_Netsuite_Invoice c
+						tb_Bank_Synch_Netsuite_Invoice_Open c
 				WHERE
 						c.customer_id=@customer_id
 						AND (@Company IS NULL OR CAST(c.subsidiary_id AS nvarchar(100)) = @Company)		-- BANK ENGINE: same subsidiary as the bank account
@@ -595,7 +599,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 						,sum(case when @currency=t.currency_name and @currency<>'EUR' then t.amount_open
 							else t.amount_open end) over (order by isnull(t.due_date,'2099-01-01'),t.invoice_number ) as Amount_openCum
 					FROM
-						tb_Netsuite_Invoice  t
+						tb_Bank_Synch_Netsuite_Invoice_Open  t
 					WHERE
 						1=1 --CompanyID=@CompanyID
 						AND	t.customer_id = @customer_id
@@ -629,7 +633,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 						,sum(case when @currency=t.currency_name and @currency<>'EUR' then t.amount_open
 							else t.amount_open end) over (order by isnull(t.due_date,'2099-01-01'),t.invoice_number ) as amount_openCum
 					FROM
-						tb_Netsuite_Invoice  t
+						tb_Bank_Synch_Netsuite_Invoice_Open  t
 					WHERE
 						1=1 --t.CompanyID=@CompanyID
 						AND	t.customer_id = @customer_id
@@ -850,7 +854,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 				, @customer_id = customer_id
 				, @Reference =CASE WHEN @amount = amount_open THEN invoice_number ELSE null END
 			FROM
-				tb_Netsuite_Invoice c
+				tb_Bank_Synch_Netsuite_Invoice_Open c
 			WHERE
 				1=1 --CompanyID=@CompanyID
 				AND	@customer_id is null

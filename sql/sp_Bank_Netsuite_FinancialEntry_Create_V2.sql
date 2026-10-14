@@ -19,6 +19,8 @@ GO
                                                                           or ReferenceXML
         anything else                                                                        -> JOURNALENTRY
 
+    0. Refresh the open bills / invoices fn_Bank_Match_V2 matches against:
+       sp_Bank_Netsuite_Synchronise_Company @BPA_Company, 'OPEN'.
     1. Match all open transactions of @BPA_Company with fn_Bank_Match_V2 (fills Matched_*).
     2. A cursor walks the open transactions, oldest first; one NetSuite record per transaction.
 
@@ -74,6 +76,12 @@ SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
 DECLARE @Creator nvarchar(50) = N'sp_Bank_Netsuite_FinancialEntry_Create_V2';
+
+-- 0. Open bills / invoices of this subsidiary, as they are now (incl. payments made in earlier runs)
+--    INSERT ... EXEC keeps its count report out of this procedure's results.
+DECLARE @OpenCounts TABLE (Company varchar(50), open_vendor_bills int, open_invoices int);
+INSERT INTO @OpenCounts
+EXEC dbo.sp_Bank_Netsuite_Synchronise_Company @BPA_Company, 'OPEN';
 
 -- 1. Match the open transactions
 UPDATE Transactions
