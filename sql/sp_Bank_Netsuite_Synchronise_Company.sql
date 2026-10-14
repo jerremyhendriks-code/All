@@ -52,7 +52,7 @@ IF OBJECT_ID(N'dbo.tb_Bank_Synch_Netsuite_VendorBill_Open', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.tb_Bank_Synch_Netsuite_VendorBill_Open
     (
-        Company              nvarchar(100)  NOT NULL     -- subsidiary ID
+        BPA_Company          nvarchar(100)  NOT NULL     -- subsidiary ID
     ,   vendor_bill_id       nvarchar(100)  NOT NULL
     ,   vendor_bill_number   nvarchar(100)  NOT NULL
     ,   vendor_id            nvarchar(100)  NULL
@@ -67,7 +67,7 @@ BEGIN
     ,   amount_pending       decimal(18, 2) NOT NULL     -- in unsent vendor payments
     ,   amount_open          decimal(18, 2) NOT NULL     -- still to pay: what the matching uses
     ,   Synchronised         datetime       NOT NULL
-    ,   CONSTRAINT PK_tb_Bank_Synch_Netsuite_VendorBill_Open PRIMARY KEY CLUSTERED (Company, vendor_bill_id)
+    ,   CONSTRAINT PK_tb_Bank_Synch_Netsuite_VendorBill_Open PRIMARY KEY CLUSTERED (BPA_Company, vendor_bill_id)
     );
     CREATE NONCLUSTERED INDEX IX_tb_Bank_Synch_Netsuite_VendorBill_Open_vendor
         ON dbo.tb_Bank_Synch_Netsuite_VendorBill_Open (vendor_id, vendor_bill_number);
@@ -79,7 +79,7 @@ IF OBJECT_ID(N'dbo.tb_Bank_Synch_Netsuite_Invoice_Open', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.tb_Bank_Synch_Netsuite_Invoice_Open
     (
-        Company              nvarchar(100)  NOT NULL     -- subsidiary ID
+        BPA_Company          nvarchar(100)  NOT NULL     -- subsidiary ID
     ,   invoice_id           nvarchar(100)  NOT NULL
     ,   invoice_number       nvarchar(100)  NOT NULL
     ,   customer_id          nvarchar(100)  NULL
@@ -94,7 +94,7 @@ BEGIN
     ,   amount_pending       decimal(18, 2) NOT NULL     -- in unsent customer payments
     ,   amount_open          decimal(18, 2) NOT NULL     -- still to receive: what the matching uses
     ,   Synchronised         datetime       NOT NULL
-    ,   CONSTRAINT PK_tb_Bank_Synch_Netsuite_Invoice_Open PRIMARY KEY CLUSTERED (Company, invoice_id)
+    ,   CONSTRAINT PK_tb_Bank_Synch_Netsuite_Invoice_Open PRIMARY KEY CLUSTERED (BPA_Company, invoice_id)
     );
     CREATE NONCLUSTERED INDEX IX_tb_Bank_Synch_Netsuite_Invoice_Open_customer
         ON dbo.tb_Bank_Synch_Netsuite_Invoice_Open (customer_id, invoice_number);
@@ -107,7 +107,7 @@ BEGIN
     CREATE TABLE dbo.tb_Bank_Synch_Netsuite_BankMatching
     (
         BPA_EntryID          uniqueidentifier NOT NULL   -- tb_Bank_Transactions
-    ,   Company              nvarchar(100)    NOT NULL
+    ,   BPA_Company          nvarchar(100)    NOT NULL
     ,   RecordType           varchar(20)      NOT NULL   -- VENDORPAYMENT / CUSTOMERPAYMENT / JOURNALENTRY
     ,   NetsuiteEntryID      uniqueidentifier NOT NULL   -- BPA_EntryID of the NetSuite header (= BPA_ReturnedID)
     ,   NetsuiteID           nvarchar(100)    NOT NULL   -- NetSuite internal id
@@ -117,6 +117,15 @@ BEGIN
     );
     PRINT N'Created  dbo.tb_Bank_Synch_Netsuite_BankMatching';
 END
+GO
+
+-- Tables created by an earlier version of this script: rename Company to BPA_Company
+IF COL_LENGTH(N'dbo.tb_Bank_Synch_Netsuite_VendorBill_Open', N'Company') IS NOT NULL
+    EXEC sp_rename N'dbo.tb_Bank_Synch_Netsuite_VendorBill_Open.Company', N'BPA_Company', N'COLUMN';
+IF COL_LENGTH(N'dbo.tb_Bank_Synch_Netsuite_Invoice_Open', N'Company') IS NOT NULL
+    EXEC sp_rename N'dbo.tb_Bank_Synch_Netsuite_Invoice_Open.Company', N'BPA_Company', N'COLUMN';
+IF COL_LENGTH(N'dbo.tb_Bank_Synch_Netsuite_BankMatching', N'Company') IS NOT NULL
+    EXEC sp_rename N'dbo.tb_Bank_Synch_Netsuite_BankMatching.Company', N'BPA_Company', N'COLUMN';
 GO
 
 CREATE OR ALTER PROCEDURE [dbo].[sp_Bank_Netsuite_Synchronise_Company]
@@ -138,7 +147,7 @@ BEGIN
     BEGIN TRANSACTION;
 
     -- Open vendor bills
-    DELETE FROM dbo.tb_Bank_Synch_Netsuite_VendorBill_Open WHERE Company = @BPA_Company;
+    DELETE FROM dbo.tb_Bank_Synch_Netsuite_VendorBill_Open WHERE BPA_Company = @BPA_Company;
 
     WITH bill AS (
         SELECT
@@ -169,7 +178,7 @@ BEGIN
     )
     INSERT INTO dbo.tb_Bank_Synch_Netsuite_VendorBill_Open
     (
-        Company, vendor_bill_id, vendor_bill_number, vendor_id, vendor_name, subsidiary_id,
+        BPA_Company, vendor_bill_id, vendor_bill_number, vendor_id, vendor_name, subsidiary_id,
         currency_id, currency_name, invoice_date, due_date, invoice_total,
         amount_open_netsuite, amount_pending, amount_open, Synchronised
     )
@@ -185,7 +194,7 @@ BEGIN
       AND b.amount_open - ISNULL(p.amount, 0) > 0;
 
     -- Open customer invoices
-    DELETE FROM dbo.tb_Bank_Synch_Netsuite_Invoice_Open WHERE Company = @BPA_Company;
+    DELETE FROM dbo.tb_Bank_Synch_Netsuite_Invoice_Open WHERE BPA_Company = @BPA_Company;
 
     WITH inv AS (
         SELECT
@@ -216,7 +225,7 @@ BEGIN
     )
     INSERT INTO dbo.tb_Bank_Synch_Netsuite_Invoice_Open
     (
-        Company, invoice_id, invoice_number, customer_id, customer_name, subsidiary_id,
+        BPA_Company, invoice_id, invoice_number, customer_id, customer_name, subsidiary_id,
         currency_id, currency_name, invoice_date, due_date, invoice_total,
         amount_open_netsuite, amount_pending, amount_open, Synchronised
     )
@@ -234,16 +243,16 @@ BEGIN
     COMMIT TRANSACTION;
 
     SELECT
-        @BPA_Company AS Company
-    ,   (SELECT COUNT(*) FROM dbo.tb_Bank_Synch_Netsuite_VendorBill_Open WHERE Company = @BPA_Company) AS open_vendor_bills
-    ,   (SELECT COUNT(*) FROM dbo.tb_Bank_Synch_Netsuite_Invoice_Open    WHERE Company = @BPA_Company) AS open_invoices;
+        @BPA_Company AS BPA_Company
+    ,   (SELECT COUNT(*) FROM dbo.tb_Bank_Synch_Netsuite_VendorBill_Open WHERE BPA_Company = @BPA_Company) AS open_vendor_bills
+    ,   (SELECT COUNT(*) FROM dbo.tb_Bank_Synch_Netsuite_Invoice_Open    WHERE BPA_Company = @BPA_Company) AS open_invoices;
 END
 
 IF @Type = 'BANKMATCHING'
 BEGIN
     -- Processed bank transactions whose NetSuite record has been created in NetSuite (id filled)
     INSERT INTO dbo.tb_Bank_Synch_Netsuite_BankMatching
-        (BPA_EntryID, Company, RecordType, NetsuiteEntryID, NetsuiteID, ExternalID, Synchronised)
+        (BPA_EntryID, BPA_Company, RecordType, NetsuiteEntryID, NetsuiteID, ExternalID, Synchronised)
     SELECT t.BPA_EntryID, @BPA_Company, r.RecordType, r.BPA_EntryID, r.id, r.externalId, @Now
     FROM dbo.tb_Bank_Transactions t
     CROSS APPLY (
