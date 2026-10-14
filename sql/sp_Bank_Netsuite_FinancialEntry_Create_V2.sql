@@ -43,7 +43,7 @@ GO
        already staged, or a document already waits in an unsent payment (also one made earlier
        in this run: first transaction wins).
 
-       Created: the NetSuite record(s) with BPA_Direction 'TO', BPA_Status 0, and the bank
+       Created: the NetSuite record(s) with BPA_Direction 'TO', BPA_Action 'A' (add), BPA_Status 0, and the bank
        transaction BPA_Status = 1, BPA_ReturnedID = BPA_EntryID of the NetSuite header, all in one
        transaction. An error on one bank transaction rolls back only that one; it is reported and
        the cursor moves on.
@@ -323,7 +323,7 @@ BEGIN
 				)
 				VALUES
 				(
-					@NewEntryID, @Origin, 'TO', 'I', 0, @BPA_Company,
+					@NewEntryID, @Origin, 'TO', 'A', 0, @BPA_Company,
 					LEFT(@ExternalID, 50), @EntryID, @Creator, '',
 					@ExternalID, @Creditor, @SubsidiaryID, @BankAccountID, @APAccountID, @CurrencyID,
 					CONVERT(varchar(10), @Bookdate, 23), @Memo, 0, 0
@@ -338,7 +338,7 @@ BEGIN
 				)
 				VALUES
 				(
-					NEWID(), @NewEntryID, @Origin, 'TO', 'I', 0, @BPA_Company,
+					NEWID(), @NewEntryID, @Origin, 'TO', 'A', 0, @BPA_Company,
 					LEFT(@ExternalID, 50), @EntryID, @Creator,
 					0, @VendorBillID, @Reference, @PayAmount, 1
 				);
@@ -470,7 +470,7 @@ BEGIN
 				)
 				VALUES
 				(
-					@NewEntryID, @Origin, 'TO', 'I', 0, @BPA_Company,
+					@NewEntryID, @Origin, 'TO', 'A', 0, @BPA_Company,
 					LEFT(@ExternalID, 50), @EntryID, @Creator, '',
 					@ExternalID, @Debtor, @SubsidiaryID, @BankAccountID, @ARAccountID, @CurrencyID,
 					@PayAmount, CAST(@Bookdate AS date), @Memo, 0
@@ -484,7 +484,7 @@ BEGIN
 					line, docId, refNum, amount, apply
 				)
 				SELECT
-					NEWID(), @NewEntryID, @Origin, 'TO', 'I', 0, @BPA_Company,
+					NEWID(), @NewEntryID, @Origin, 'TO', 'A', 0, @BPA_Company,
 					LEFT(@ExternalID, 50), @EntryID, @Creator,
 					d.line, d.doc_id, d.doc_number, d.apply_amount, 1
 				FROM #docs d;
@@ -549,7 +549,7 @@ BEGIN
 				)
 				VALUES
 				(
-					@NewEntryID, @Origin, 'TO', 'I', 0, @BPA_Company,
+					@NewEntryID, @Origin, 'TO', 'A', 0, @BPA_Company,
 					LEFT(@ExternalID, 50), @EntryID, @Creator, '',
 					@ExternalID, @SubsidiaryID, @CurrencyID, CAST(@Bookdate AS date), @Memo
 				);
@@ -563,7 +563,7 @@ BEGIN
 				VALUES
 				-- Line 0: bank. Money in = debit, money out = credit
 				(
-					NEWID(), @NewEntryID, @Origin, 'TO', 'I', 0, @BPA_Company,
+					NEWID(), @NewEntryID, @Origin, 'TO', 'A', 0, @BPA_Company,
 					LEFT(@ExternalID, 50), @EntryID, @Creator,
 					0, @BankAccountID,
 					CASE WHEN @Amount > 0 THEN @PayAmount END,
@@ -572,7 +572,7 @@ BEGIN
 				),
 				-- Line 1: the other side, with the vendor / customer when known
 				(
-					NEWID(), @NewEntryID, @Origin, 'TO', 'I', 0, @BPA_Company,
+					NEWID(), @NewEntryID, @Origin, 'TO', 'A', 0, @BPA_Company,
 					LEFT(@ExternalID, 50), @EntryID, @Creator,
 					1, @OffsetAccountID,
 					CASE WHEN @Amount < 0 THEN @PayAmount END,
