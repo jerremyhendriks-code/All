@@ -5,14 +5,16 @@
             --sp_Bank_Netsuite_FinancialEntry_Create_V2 (fn_Bank_Match_V2)--> tb_Netsuite_VendorPayment / CustomerPayment
             --BPA TO tasks--> NetSuite
 
-    1. Refreshes the snapshot of @Company and picks a REAL open EUR bill and invoice of @Company from it
-       (or the internal IDs filled in below), with at least @TestAmount open.
+    1. Refreshes the snapshot and picks a REAL open EUR bill of @VendorCompany and a REAL open EUR invoice
+       of @CustomerCompany from it (or the internal IDs filled in below), with at least @TestAmount open.
+       The two may be different subsidiaries: each payment goes through a bank account of its own
+       document's subsidiary.
     2. Inserts a test copy of each (BPA_Origin 'TEST'): same internal id, vendor / customer, subsidiary and
        currency, but a made-up number (BPT-VB-<tag> / BPT-IN-<tag>) and amount_open = @TestAmount.
        The snapshot takes the newest row per document, so the engine sees the test number; NetSuite gets
        the real internal id, so the payment is applied to the real document: a partial payment of
        @TestAmount (sandbox only!).
-    3. Inserts two Rabobank transactions on our own account, the other party a dummy IBAN, so only the
+    3. Inserts two Rabobank transactions on our own accounts, the other party a dummy IBAN, so only the
        number in the description can make the match:
            money out -@TestAmount, description = test bill number     -> PurchaseInvoice  -> VENDORPAYMENT
            money in  +@TestAmount, description = test invoice number  -> SalesInvoice     -> CUSTOMERPAYMENT
@@ -27,8 +29,10 @@ SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
 -- ===== Fill in =====
-DECLARE @Company       nvarchar(50)   = N'89';          -- subsidiary of the bank account and both documents
-DECLARE @OwnIBAN       varchar(34)    = NULL;           -- our bank account; NULL = the first complete one of @Company
+DECLARE @VendorCompany   nvarchar(50) = N'93';        -- subsidiary of the bill (and of the bank account that pays it)
+DECLARE @CustomerCompany nvarchar(50) = N'89';        -- subsidiary of the invoice (and of the bank account it is paid into)
+DECLARE @VendorIBAN    varchar(34)    = NULL;           -- our bank account paying the bill; NULL = the first complete one of @VendorCompany
+DECLARE @CustomerIBAN  varchar(34)    = NULL;           -- our bank account receiving the invoice; NULL = the first complete one of @CustomerCompany
 DECLARE @TestAmount    decimal(18, 2) = 10.00;          -- paid on the bill and on the invoice
 DECLARE @DummyIBAN     varchar(34)    = 'NL00TEST0000000001';
 DECLARE @VB_BillID     nvarchar(100)  = NULL;           -- NULL = pick an open bill of @Company
@@ -46,18 +50,27 @@ DECLARE @VB_VendorID nvarchar(100), @VB_VendorName nvarchar(255), @VB_Open decim
         @msg nvarchar(2048);
 
 -- ---------- Pre-checks ----------
-IF @OwnIBAN IS NULL
-    SELECT TOP (1) @OwnIBAN = bank.Bankaccount
+IF @VendorIBAN IS NULL
+    SELECT TOP (1) @VendorIBAN = bank.Bankaccount
     FROM vw_Bank_BankAccounts bank
-    WHERE bank.Company = @Company
+    WHERE bank.Company = @VendorCompany
       AND bank.GLCodeBank IS NOT NULL
       AND bank.DefaultGLCodeCreditor IS NOT NULL
+    ORDER BY bank.Bankaccount;
+
+IF @CustomerIBAN IS NULL
+    SELECT TOP (1) @CustomerIBAN = bank.Bankaccount
+    FROM vw_Bank_BankAccounts bank
+    WHERE bank.Company = @CustomerCompany
+      AND bank.GLCodeBank IS NOT NULL
       AND bank.DefaultGLCodeDebtor IS NOT NULL
     ORDER BY bank.Bankaccount;
 
-IF @OwnIBAN IS NULL
+IF @VendorIBAN IS NULL OR @CustomerIBAN IS NULL
 BEGIN
-    SET @msg = N'No bank account of subsidiary ' + @Company + N' with GLCodeBank, AP and AR account in vw_Bank_BankAccounts.';
+    SET @msg = N'No bank account in vw_Bank_BankAccounts with GLCodeBank and '
+             + CASE WHEN @VendorIBAN IS NULL THEN N'AP account for subsidiary ' + @VendorCompany
+                    ELSE N'AR account for subsidiary ' + @CustomerCompany END + N'.';
     THROW 50001, @msg, 1;
 END
 
@@ -67,12 +80,14 @@ IF EXISTS (SELECT 1 FROM dbo.vw_Bank_Relation_IBAN WHERE custrecord_2663_entity_
     THROW 50002, N'@DummyIBAN belongs to a relation; pick another one.', 1;
 
 -- Fresh snapshot: only documents that are open in the latest load
-EXEC dbo.sp_Bank_Synchronise_Company_V2 @Subsidiary = @Company, @Report = 0;
+EXEC dbo.sp_Bank_Synchronise_Company_V2 @Subsidiary = @VendorCompany, @Report = 0;
+IF @CustomerCompany <> @VendorCompany
+    EXEC dbo.sp_Bank_Synchronise_Company_V2 @Subsidiary = @CustomerCompany, @Report = 0;
 
--- The real bill and invoice: open, EUR, in @Company, not waiting in an unsent payment, not a test copy
+-- The real bill and invoice: open, EUR, in their subsidiary, not waiting in an unsent payment, not a test copy
 SELECT TOP (1) @VB_BillID = b.vendor_bill_id, @VB_VendorID = b.vendor_id, @VB_VendorName = b.vendor_name, @VB_Open = b.amount_open
 FROM dbo.vw_Bank_Open_VendorBill b
-WHERE b.subsidiary_id = @Company
+WHERE b.subsidiary_id = @VendorCompany
   AND b.currency_id = @EurID
   AND b.amount_open >= @TestAmount
   AND b.vendor_id IS NOT NULL
@@ -86,7 +101,7 @@ ORDER BY b.amount_open DESC, b.vendor_bill_id;
 
 SELECT TOP (1) @INV_InvoiceID = i.invoice_id, @INV_CustomerID = i.customer_id, @INV_CustomerName = i.customer_name, @INV_Open = i.amount_open
 FROM dbo.vw_Bank_Open_Invoice i
-WHERE i.subsidiary_id = @Company
+WHERE i.subsidiary_id = @CustomerCompany
   AND i.currency_id = @EurID
   AND i.amount_open >= @TestAmount
   AND i.customer_id IS NOT NULL
@@ -100,10 +115,9 @@ ORDER BY i.amount_open DESC, i.invoice_id;
 
 IF @VB_VendorID IS NULL OR @INV_CustomerID IS NULL
 BEGIN
-    SET @msg = N'Subsidiary ' + @Company + N' has no '
-             + CASE WHEN @VB_VendorID IS NULL THEN N'open EUR vendor bill' ELSE N'' END
+    SET @msg = CASE WHEN @VB_VendorID IS NULL THEN N'No open EUR vendor bill in subsidiary ' + @VendorCompany ELSE N'' END
              + CASE WHEN @VB_VendorID IS NULL AND @INV_CustomerID IS NULL THEN N' and no ' ELSE N'' END
-             + CASE WHEN @INV_CustomerID IS NULL THEN N'open EUR invoice' ELSE N'' END
+             + CASE WHEN @INV_CustomerID IS NULL THEN N'open EUR invoice in subsidiary ' + @CustomerCompany ELSE N'' END
              + N' with at least ' + CAST(@TestAmount AS nvarchar(20)) + N' open in the snapshot. '
              + N'See the counts per subsidiary: SELECT Subsidiary, DocType, COUNT(*) FROM tb_Bank_Synch_OpenItems GROUP BY Subsidiary, DocType.';
     THROW 50003, @msg, 1;
@@ -121,9 +135,9 @@ INSERT INTO tb_Netsuite_VendorBill
 )
 VALUES
 (
-    N'TEST', N'FROM', @Company, N'BPA-TEST', @BillNo,
+    N'TEST', N'FROM', @VendorCompany, N'BPA-TEST', @BillNo,
     @VB_BillID, @BillNo, @VB_VendorID, @VB_VendorName,
-    @TestAmount, @TestAmount, @EurID, N'EUR', @Company,
+    @TestAmount, @TestAmount, @EurID, N'EUR', @VendorCompany,
     CONVERT(varchar(10), GETDATE(), 23), CONVERT(varchar(10), GETDATE(), 23), N'BPA bank engine test'
 );
 
@@ -136,9 +150,9 @@ INSERT INTO tb_Netsuite_Invoice
 )
 VALUES
 (
-    N'TEST', N'FROM', @Company, N'BPA-TEST', @InvoiceNo,
+    N'TEST', N'FROM', @CustomerCompany, N'BPA-TEST', @InvoiceNo,
     @INV_InvoiceID, @InvoiceNo, @INV_CustomerID, @INV_CustomerName,
-    @TestAmount, @TestAmount, @EurID, N'EUR', @Company,
+    @TestAmount, @TestAmount, @EurID, N'EUR', @CustomerCompany,
     CONVERT(varchar(10), GETDATE(), 23), CONVERT(varchar(10), GETDATE(), 23), N'BPA bank engine test'
 );
 
@@ -153,22 +167,26 @@ INSERT INTO tb_Rabobank_Transaction
     remittanceInformationUnstructured
 )
 VALUES
-    (@OwnIBAN, 'FROMUPDATE', 0, N'BPA-TEST',
+    (@VendorIBAN, 'FROMUPDATE', 0, N'BPA-TEST',
      'BPATEST-VP-' + @run, CAST(GETDATE() AS date), CAST(GETDATE() AS date), GETUTCDATE(),
      -@TestAmount, 'EUR',
-     @OwnIBAN, N'Ellomay', @DummyIBAN, @VB_VendorName,
+     @VendorIBAN, N'Ellomay', @DummyIBAN, @VB_VendorName,
      @BillNo),
-    (@OwnIBAN, 'FROMUPDATE', 0, N'BPA-TEST',
+    (@CustomerIBAN, 'FROMUPDATE', 0, N'BPA-TEST',
      'BPATEST-CP-' + @run, CAST(GETDATE() AS date), CAST(GETDATE() AS date), GETUTCDATE(),
      @TestAmount, 'EUR',
-     @DummyIBAN, @INV_CustomerName, @OwnIBAN, N'Ellomay',
+     @DummyIBAN, @INV_CustomerName, @CustomerIBAN, N'Ellomay',
      @InvoiceNo);
 
 COMMIT TRANSACTION;
 
 -- ---------- Rabobank -> tb_Bank_Transactions, snapshot with the test copies ----------
-EXEC sp_Bank_Transaction_Rabobank_Copy @OwnIBAN;
-EXEC dbo.sp_Bank_Synchronise_Company_V2 @Subsidiary = @Company, @Report = 0;
+EXEC sp_Bank_Transaction_Rabobank_Copy @VendorIBAN;
+IF @CustomerIBAN <> @VendorIBAN
+    EXEC sp_Bank_Transaction_Rabobank_Copy @CustomerIBAN;
+EXEC dbo.sp_Bank_Synchronise_Company_V2 @Subsidiary = @VendorCompany, @Report = 0;
+IF @CustomerCompany <> @VendorCompany
+    EXEC dbo.sp_Bank_Synchronise_Company_V2 @Subsidiary = @CustomerCompany, @Report = 0;
 
 -- ---------- What fn_Bank_Match_V2 makes of them ----------
 SELECT s.Expected,
@@ -176,9 +194,9 @@ SELECT s.Expected,
        CASE WHEN x.Actual = s.Expected THEN 'PASS' ELSE 'FAIL' END AS Result,
        t.BPA_EntryID, t.BPA_Company, t.BPA_Reference, t.Amount, t.Currency, t.IBAN, t.Description,
        m.typematch, m.vendor_id, m.customer_id, m.Reference, m.GLCode
-FROM (VALUES ('VENDORPAYMENT',   'BPATEST-VP-' + @run),
-             ('CUSTOMERPAYMENT', 'BPATEST-CP-' + @run)) s(Expected, EntryReference)
-LEFT JOIN tb_Bank_Transactions t ON t.BPA_Origin = @OwnIBAN AND t.BPA_Reference = s.EntryReference
+FROM (VALUES ('VENDORPAYMENT',   'BPATEST-VP-' + @run, @VendorIBAN),
+             ('CUSTOMERPAYMENT', 'BPATEST-CP-' + @run, @CustomerIBAN)) s(Expected, EntryReference, OwnIBAN)
+LEFT JOIN tb_Bank_Transactions t ON t.BPA_Origin = s.OwnIBAN AND t.BPA_Reference = s.EntryReference
 OUTER APPLY dbo.fn_Bank_Match_V2('BANK', t.BPA_EntryID, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL) m
 CROSS APPLY (SELECT CASE      -- same rule as sp_Bank_Netsuite_FinancialEntry_Create_V2
                  WHEN t.BPA_EntryID IS NULL
@@ -193,18 +211,19 @@ CROSS APPLY (SELECT CASE      -- same rule as sp_Bank_Netsuite_FinancialEntry_Cr
 ORDER BY s.Expected DESC;
 
 -- The real documents the payments will be applied to in NetSuite
-SELECT 'vendor bill' AS document, @VB_BillID AS internal_id, @BillNo AS test_number, @VB_VendorID AS relation_id,
-       @VB_VendorName AS relation_name, @VB_Open AS really_open, @TestAmount AS test_payment
+SELECT 'vendor bill' AS document, @VendorCompany AS subsidiary, @VB_BillID AS internal_id, @BillNo AS test_number,
+       @VB_VendorID AS relation_id, @VB_VendorName AS relation_name, @VB_Open AS really_open, @TestAmount AS test_payment
 UNION ALL
-SELECT 'invoice', @INV_InvoiceID, @InvoiceNo, @INV_CustomerID, @INV_CustomerName, @INV_Open, @TestAmount;
+SELECT 'invoice', @CustomerCompany, @INV_InvoiceID, @InvoiceNo, @INV_CustomerID, @INV_CustomerName, @INV_Open, @TestAmount;
 
--- Both bank transaction ids, for the engine
-SELECT t.BPA_EntryID, t.BPA_Reference, t.Amount, t.Description
+-- Both bank transactions, with the engine call for each
+SELECT t.BPA_EntryID, t.BPA_Company, t.BPA_Origin, t.BPA_Reference, t.Amount, t.Description,
+       'EXEC sp_Bank_Netsuite_FinancialEntry_Create_V2 ''' + t.BPA_Company + ''', @BPA_EntryID = '''
+       + CAST(t.BPA_EntryID AS varchar(36)) + ''', @Synchronise = 0, @Preview = 1;' AS engine_preview
 FROM tb_Bank_Transactions t
-WHERE t.BPA_Origin = @OwnIBAN AND t.BPA_Reference IN ('BPATEST-VP-' + @run, 'BPATEST-CP-' + @run);
+WHERE t.BPA_Reference IN ('BPATEST-VP-' + @run, 'BPATEST-CP-' + @run);
 
-PRINT N'Test run ' + @run + N' on ' + @OwnIBAN + N'. Next, per transaction above:';
-PRINT N'    EXEC sp_Bank_Netsuite_FinancialEntry_Create_V2 ''' + @Company + N''', @BPA_EntryID = ''<BPA_EntryID>'', @Synchronise = 0, @Preview = 1;';
+PRINT N'Test run ' + @run + N': vendor payment from ' + @VendorIBAN + N', customer payment into ' + @CustomerIBAN + N'.';
 GO
 
 /*
@@ -232,5 +251,5 @@ DELETE FROM tb_Netsuite_Invoice     WHERE BPA_Origin = N'TEST' AND invoice_numbe
 
 COMMIT TRANSACTION;
 
-EXEC dbo.sp_Bank_Synchronise_Company_V2 @Subsidiary = '89', @Report = 0;	-- snapshot without the test copies
+EXEC dbo.sp_Bank_Synchronise_Company_V2 @Report = 0;	-- snapshot of all subsidiaries without the test copies
 */
