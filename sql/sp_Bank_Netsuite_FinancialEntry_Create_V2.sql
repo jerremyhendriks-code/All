@@ -18,6 +18,9 @@ GO
         Sales...                        -                 filled          invoice number     -> CUSTOMERPAYMENT
                                                                           or ReferenceXML
         anything else                                                                        -> JOURNALENTRY
+    A transaction whose bill / invoice doesn't fit (not found, found twice, not open, open amount too small,
+    other subsidiary or currency, wrong direction, already in an unsent payment) also becomes a journal
+    entry: on AP with the vendor, or AR with the customer. Note in the report says why.
 
     0. Refresh the snapshot of open bills / invoices / relation IBANs for @BPA_Company
        (sp_Bank_Synchronise_Company_V2), unless @Synchronise = 0.
@@ -42,11 +45,9 @@ GO
                                                   or UnknownDebtor (money in)
 
        Skipped (and reported, the transaction stays open) when something is missing or unsafe:
-       wrong direction for the scenario, document not found or found twice, document not open or
-       open amount too small, other subsidiary or currency than the bank account, a missing
-       NetSuite ID (bank / AP / AR / suspense account, subsidiary, currency), the externalId is
-       already staged, or a document already waits in an unsent payment (also one made earlier
-       in this run: first transaction wins).
+       a missing NetSuite ID (bank / AP / AR / suspense account, subsidiary, currency) or the externalId
+       is already staged. A document that doesn't fit (see above; an unsent payment made earlier in this
+       run counts too: first transaction wins) is no reason to skip: the journal entry is made instead.
        The GL account of a workflow rule (typematch MATCH) must be fit for a bank journal: known in
        NetSuite (latest load of tb_Netsuite_Account), active, not a summary account, not a bank /
        AP / AR / non-posting / statistical account, and open for the bank account's subsidiary
@@ -134,6 +135,7 @@ CREATE TABLE #result
 ,	NetsuiteEntryID      uniqueidentifier NULL
 ,	Result               varchar(20)      NOT NULL	-- created / would be created / skipped / error
 ,	Reason               nvarchar(2048)   NULL
+,	Note                 nvarchar(2048)   NULL	-- why a journal entry instead of a payment
 );
 
 -- The invoices of the customer payment being handled (one, or a list from Matched_ReferenceXML)
@@ -210,7 +212,8 @@ DECLARE
 ,	@PayAmount        decimal(18, 2)
 ,	@StagedAs         nvarchar(50)
 ,	@NewEntryID       uniqueidentifier
-,	@Reason           nvarchar(2048);
+,	@Reason           nvarchar(2048)
+,	@DocReason        nvarchar(2048);	-- the bill / invoice doesn't fit: journal entry instead
 
 -- 2. One pass per bank transaction.
 --    STATIC: the list and its values are fixed at OPEN; BPA_Status changes inside the loop.
@@ -253,7 +256,7 @@ BEGIN
 		@BillsFound = 0, @VendorBillID = NULL, @BillAmountOpen = NULL, @BillSubsidiaryID = NULL,
 		@BillCurrencyID = NULL, @DocCount = 0, @DocAmountOpen = NULL, @Documents = NULL, @DocumentIDs = NULL,
 		@OffsetAccountID = NULL, @EntityID = NULL, @PayAmount = NULL, @StagedAs = NULL,
-		@NewEntryID = NULL, @Reason = NULL,
+		@NewEntryID = NULL, @Reason = NULL, @DocReason = NULL,
 		@RuleAcctFound = 0, @RuleAcctName = NULL, @RuleAcctInactive = NULL, @RuleAcctSummary = NULL,
 		@RuleAcctType = NULL, @RuleAcctChildren = NULL, @RuleAcctSubOK = 0;
 
@@ -309,23 +312,17 @@ BEGIN
 
 			SELECT @Documents = @Reference, @DocumentIDs = @VendorBillID, @DocAmountOpen = @BillAmountOpen;
 
-			-- Don't send what isn't safe
-			SET @Reason =
+			-- Does the bill fit? If not, the transaction becomes a journal entry on AP (below)
+			SET @DocReason =
 				CASE
 					WHEN @Amount >= 0                         THEN 'Money coming in, not a payment to the vendor'
-					WHEN @ExternalID IS NULL                  THEN 'No BPA_Origin / BPA_Reference for the externalId'
 					WHEN @BillsFound = 0                      THEN 'No open vendor bill ' + @Reference + ' for vendor ' + @Creditor
 					WHEN @BillsFound > 1                      THEN 'Vendor ' + @Creditor + ' has ' + CAST(@BillsFound AS varchar(10)) + ' bills numbered ' + @Reference
 					WHEN @BillAmountOpen IS NULL
 					  OR @BillAmountOpen <= 0                 THEN 'Vendor bill ' + @Reference + ' is not open'
 					WHEN @PayAmount - @BillAmountOpen > 0.005 THEN 'Payment ' + CAST(@PayAmount AS varchar(20)) + ' is more than open amount ' + CAST(@BillAmountOpen AS varchar(20))
-					WHEN @SubsidiaryID IS NULL                THEN 'No subsidiary (Company) for bank account ' + ISNULL(@Origin, '')
-					WHEN @BankAccountID IS NULL               THEN 'No GLCodeBank for bank account ' + ISNULL(@Origin, '')
-					WHEN @APAccountID IS NULL                 THEN 'No AP account (DefaultGLCodeCreditor) for bank account ' + ISNULL(@Origin, '')
-					WHEN @CurrencyID IS NULL                  THEN 'Unknown currency ' + ISNULL(@Currency, '')
 					WHEN @BillSubsidiaryID <> @SubsidiaryID   THEN 'Bill is in subsidiary ' + @BillSubsidiaryID + ', bank account in ' + @SubsidiaryID
 					WHEN @BillCurrencyID <> @CurrencyID       THEN 'Bill currency ' + @BillCurrencyID + ' differs from bank currency ' + @CurrencyID
-					WHEN @StagedAs IS NOT NULL                THEN 'Already staged as ' + @StagedAs + ' ' + @ExternalID
 					WHEN EXISTS (SELECT 1
 								 FROM tb_Netsuite_VendorPayment_Apply a
 								 JOIN tb_Netsuite_VendorPayment h ON h.BPA_EntryID = a.BPA_ParentID
@@ -336,58 +333,74 @@ BEGIN
 					                                          THEN 'Bill ' + @Reference + ' is already in a vendor payment that is not sent yet'
 				END;
 
-			IF @Reason IS NULL AND @Preview = 0
+			IF @DocReason IS NOT NULL
+				SELECT @Scenario = 'JOURNALENTRY', @DocReason = 'No vendor payment: ' + @DocReason;
+			ELSE
 			BEGIN
-				SET @NewEntryID = NEWID();
+				-- Don't send what isn't safe
+				SET @Reason =
+					CASE
+						WHEN @ExternalID IS NULL                  THEN 'No BPA_Origin / BPA_Reference for the externalId'
+						WHEN @SubsidiaryID IS NULL                THEN 'No subsidiary (Company) for bank account ' + ISNULL(@Origin, '')
+						WHEN @BankAccountID IS NULL               THEN 'No GLCodeBank for bank account ' + ISNULL(@Origin, '')
+						WHEN @APAccountID IS NULL                 THEN 'No AP account (DefaultGLCodeCreditor) for bank account ' + ISNULL(@Origin, '')
+						WHEN @CurrencyID IS NULL                  THEN 'Unknown currency ' + ISNULL(@Currency, '')
+						WHEN @StagedAs IS NOT NULL                THEN 'Already staged as ' + @StagedAs + ' ' + @ExternalID
+					END;
 
-				BEGIN TRANSACTION;
+				IF @Reason IS NULL AND @Preview = 0
+				BEGIN
+					SET @NewEntryID = NEWID();
 
-				INSERT INTO tb_Netsuite_VendorPayment
-				(
-					BPA_EntryID, BPA_Origin, BPA_Direction, BPA_Action, BPA_Status, BPA_Company,
-					BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator, id,
-					externalId, entityId, subsidiaryId, accountId, apAcctId, currencyId,
-					tranDate, memo, toBeEmailed, toBePrinted
-				)
-				VALUES
-				(
-					@NewEntryID, @Origin, 'TO', 'A', 0, @BPA_Company,
-					LEFT(@ExternalID, 50), @EntryID, @Creator, '',
-					@ExternalID, @Creditor, @SubsidiaryID, @BankAccountID, @APAccountID, @CurrencyID,
-					CONVERT(varchar(10), @Bookdate, 23), @Memo, 0, 0
-				);
+					BEGIN TRANSACTION;
 
-				-- One apply line: the matched bill, for the amount paid at the bank
-				INSERT INTO tb_Netsuite_VendorPayment_Apply
-				(
-					BPA_EntryID, BPA_ParentID, BPA_Origin, BPA_Direction, BPA_Action, BPA_Status, BPA_Company,
-					BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator,
-					line, doc_id, refNum, amount, apply
-				)
-				VALUES
-				(
-					NEWID(), @NewEntryID, @Origin, 'TO', 'A', 0, @BPA_Company,
-					LEFT(@ExternalID, 50), @EntryID, @Creator,
-					0, @VendorBillID, @Reference, @PayAmount, 1
-				);
+					INSERT INTO tb_Netsuite_VendorPayment
+					(
+						BPA_EntryID, BPA_Origin, BPA_Direction, BPA_Action, BPA_Status, BPA_Company,
+						BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator, id,
+						externalId, entityId, subsidiaryId, accountId, apAcctId, currencyId,
+						tranDate, memo, toBeEmailed, toBePrinted
+					)
+					VALUES
+					(
+						@NewEntryID, @Origin, 'TO', 'A', 0, @BPA_Company,
+						LEFT(@ExternalID, 50), @EntryID, @Creator, '',
+						@ExternalID, @Creditor, @SubsidiaryID, @BankAccountID, @APAccountID, @CurrencyID,
+						CONVERT(varchar(10), @Bookdate, 23), @Memo, 0, 0
+					);
 
-				-- Bank transaction done; BPA_ReturnedID leads back to the NetSuite record
-				UPDATE tb_Bank_Transactions
-				SET BPA_Status = 1,
-					BPA_ReturnedID = @NewEntryID
-				WHERE BPA_EntryID = @EntryID;
+					-- One apply line: the matched bill, for the amount paid at the bank
+					INSERT INTO tb_Netsuite_VendorPayment_Apply
+					(
+						BPA_EntryID, BPA_ParentID, BPA_Origin, BPA_Direction, BPA_Action, BPA_Status, BPA_Company,
+						BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator,
+						line, doc_id, refNum, amount, apply
+					)
+					VALUES
+					(
+						NEWID(), @NewEntryID, @Origin, 'TO', 'A', 0, @BPA_Company,
+						LEFT(@ExternalID, 50), @EntryID, @Creator,
+						0, @VendorBillID, @Reference, @PayAmount, 1
+					);
 
-				COMMIT TRANSACTION;
+					-- Bank transaction done; BPA_ReturnedID leads back to the NetSuite record
+					UPDATE tb_Bank_Transactions
+					SET BPA_Status = 1,
+						BPA_ReturnedID = @NewEntryID
+					WHERE BPA_EntryID = @EntryID;
+
+					COMMIT TRANSACTION;
+				END
+
+				IF @Reason IS NULL
+					INSERT INTO #used_docs (doc_type, doc_id) VALUES ('VENDORBILL', @VendorBillID);
+
+				SET @EntityID = @Creditor;
 			END
-
-			IF @Reason IS NULL
-				INSERT INTO #used_docs (doc_type, doc_id) VALUES ('VENDORBILL', @VendorBillID);
-
-			SET @EntityID = @Creditor;
 		END
 
 		------------------------------------------------------------------------------------
-		ELSE IF @Scenario = 'CUSTOMERPAYMENT'
+		IF @Scenario = 'CUSTOMERPAYMENT'
 		BEGIN
 			-- The invoice(s): one number in Matched_Reference, or a list in Matched_ReferenceXML
 			TRUNCATE TABLE #docs;	-- also restarts line at 0
@@ -430,11 +443,10 @@ BEGIN
 			,	@DocumentIDs = STUFF((SELECT N', ' + ISNULL(doc_id, N'?') FROM #docs ORDER BY line
 									  FOR XML PATH(''), TYPE).value('.', 'nvarchar(max)'), 1, 2, N'');
 
-			-- Don't send what isn't safe
-			SET @Reason =
+			-- Do the invoices fit? If not, the transaction becomes a journal entry on AR (below)
+			SET @DocReason =
 				CASE
 					WHEN @Amount <= 0                         THEN 'Money going out, not a payment from the customer'
-					WHEN @ExternalID IS NULL                  THEN 'No BPA_Origin / BPA_Reference for the externalId'
 					WHEN @DocCount = 0                        THEN 'No invoice number in the match'
 					WHEN EXISTS (SELECT 1 FROM #docs WHERE found = 0)
 					                                          THEN 'No open invoice ' + (SELECT TOP 1 doc_number FROM #docs WHERE found = 0 ORDER BY line)
@@ -449,17 +461,12 @@ BEGIN
 					                                          THEN 'Payment ' + CAST(@PayAmount AS varchar(20)) + ' is more than open amount ' + CAST(@DocAmountOpen AS varchar(20))
 					WHEN @DocCount > 1 AND ABS(@PayAmount - @DocAmountOpen) > 0.005
 					                                          THEN 'Invoices add up to ' + CAST(@DocAmountOpen AS varchar(20)) + ', payment is ' + CAST(@PayAmount AS varchar(20))
-					WHEN @SubsidiaryID IS NULL                THEN 'No subsidiary (Company) for bank account ' + ISNULL(@Origin, '')
-					WHEN @BankAccountID IS NULL               THEN 'No GLCodeBank for bank account ' + ISNULL(@Origin, '')
-					WHEN @ARAccountID IS NULL                 THEN 'No AR account (DefaultGLCodeDebtor) for bank account ' + ISNULL(@Origin, '')
-					WHEN @CurrencyID IS NULL                  THEN 'Unknown currency ' + ISNULL(@Currency, '')
 					WHEN EXISTS (SELECT 1 FROM #docs WHERE subsidiary_id <> @SubsidiaryID)
 					                                          THEN 'Invoice ' + (SELECT TOP 1 doc_number FROM #docs WHERE subsidiary_id <> @SubsidiaryID ORDER BY line)
 					                                               + ' is in another subsidiary than bank account ' + @Origin + ' (' + @SubsidiaryID + ')'
 					WHEN EXISTS (SELECT 1 FROM #docs WHERE currency_id <> @CurrencyID)
 					                                          THEN 'Invoice ' + (SELECT TOP 1 doc_number FROM #docs WHERE currency_id <> @CurrencyID ORDER BY line)
 					                                               + ' has another currency than the bank (' + @Currency + ')'
-					WHEN @StagedAs IS NOT NULL                THEN 'Already staged as ' + @StagedAs + ' ' + @ExternalID
 					WHEN EXISTS (SELECT 1
 								 FROM #docs d
 								 JOIN tb_Netsuite_CustomerPayment_Apply a ON a.docId = d.doc_id
@@ -472,58 +479,75 @@ BEGIN
 					                                          THEN 'Invoice(s) ' + @Documents + ': already in a customer payment that is not sent yet'
 				END;
 
-			IF @Reason IS NULL AND @Preview = 0
+			IF @DocReason IS NOT NULL
+				SELECT @Scenario = 'JOURNALENTRY', @DocReason = 'No customer payment: ' + @DocReason;
+			ELSE
 			BEGIN
-				SET @NewEntryID = NEWID();
+				-- Don't send what isn't safe
+				SET @Reason =
+					CASE
+						WHEN @ExternalID IS NULL                  THEN 'No BPA_Origin / BPA_Reference for the externalId'
+						WHEN @SubsidiaryID IS NULL                THEN 'No subsidiary (Company) for bank account ' + ISNULL(@Origin, '')
+						WHEN @BankAccountID IS NULL               THEN 'No GLCodeBank for bank account ' + ISNULL(@Origin, '')
+						WHEN @ARAccountID IS NULL                 THEN 'No AR account (DefaultGLCodeDebtor) for bank account ' + ISNULL(@Origin, '')
+						WHEN @CurrencyID IS NULL                  THEN 'Unknown currency ' + ISNULL(@Currency, '')
+						WHEN @StagedAs IS NOT NULL                THEN 'Already staged as ' + @StagedAs + ' ' + @ExternalID
+					END;
 
-				BEGIN TRANSACTION;
+				IF @Reason IS NULL AND @Preview = 0
+				BEGIN
+					SET @NewEntryID = NEWID();
 
-				-- Paid straight into the bank GL account
-				INSERT INTO tb_Netsuite_CustomerPayment
-				(
-					BPA_EntryID, BPA_Origin, BPA_Direction, BPA_Action, BPA_Status, BPA_Company,
-					BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator, id,
-					externalId, customerId, subsidiaryId, accountId, aracctId, currencyId,
-					payment, tranDate, memo, toBeEmailed
-				)
-				VALUES
-				(
-					@NewEntryID, @Origin, 'TO', 'A', 0, @BPA_Company,
-					LEFT(@ExternalID, 50), @EntryID, @Creator, '',
-					@ExternalID, @Debtor, @SubsidiaryID, @BankAccountID, @ARAccountID, @CurrencyID,
-					@PayAmount, CAST(@Bookdate AS date), @Memo, 0
-				);
+					BEGIN TRANSACTION;
 
-				-- One apply line per invoice
-				INSERT INTO tb_Netsuite_CustomerPayment_Apply
-				(
-					BPA_EntryID, BPA_ParentID, BPA_Origin, BPA_Direction, BPA_Action, BPA_Status, BPA_Company,
-					BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator,
-					line, docId, refNum, amount, apply
-				)
-				SELECT
-					NEWID(), @NewEntryID, @Origin, 'TO', 'A', 0, @BPA_Company,
-					LEFT(@ExternalID, 50), @EntryID, @Creator,
-					d.line, d.doc_id, d.doc_number, d.apply_amount, 1
-				FROM #docs d;
+					-- Paid straight into the bank GL account
+					INSERT INTO tb_Netsuite_CustomerPayment
+					(
+						BPA_EntryID, BPA_Origin, BPA_Direction, BPA_Action, BPA_Status, BPA_Company,
+						BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator, id,
+						externalId, customerId, subsidiaryId, accountId, aracctId, currencyId,
+						payment, tranDate, memo, toBeEmailed
+					)
+					VALUES
+					(
+						@NewEntryID, @Origin, 'TO', 'A', 0, @BPA_Company,
+						LEFT(@ExternalID, 50), @EntryID, @Creator, '',
+						@ExternalID, @Debtor, @SubsidiaryID, @BankAccountID, @ARAccountID, @CurrencyID,
+						@PayAmount, CAST(@Bookdate AS date), @Memo, 0
+					);
 
-				UPDATE tb_Bank_Transactions
-				SET BPA_Status = 1,
-					BPA_ReturnedID = @NewEntryID
-				WHERE BPA_EntryID = @EntryID;
+					-- One apply line per invoice
+					INSERT INTO tb_Netsuite_CustomerPayment_Apply
+					(
+						BPA_EntryID, BPA_ParentID, BPA_Origin, BPA_Direction, BPA_Action, BPA_Status, BPA_Company,
+						BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator,
+						line, docId, refNum, amount, apply
+					)
+					SELECT
+						NEWID(), @NewEntryID, @Origin, 'TO', 'A', 0, @BPA_Company,
+						LEFT(@ExternalID, 50), @EntryID, @Creator,
+						d.line, d.doc_id, d.doc_number, d.apply_amount, 1
+					FROM #docs d;
 
-				COMMIT TRANSACTION;
+					UPDATE tb_Bank_Transactions
+					SET BPA_Status = 1,
+						BPA_ReturnedID = @NewEntryID
+					WHERE BPA_EntryID = @EntryID;
+
+					COMMIT TRANSACTION;
+				END
+
+				IF @Reason IS NULL
+					INSERT INTO #used_docs (doc_type, doc_id)
+					SELECT 'INVOICE', doc_id FROM #docs;
+
+				SET @EntityID = @Debtor;
 			END
-
-			IF @Reason IS NULL
-				INSERT INTO #used_docs (doc_type, doc_id)
-				SELECT 'INVOICE', doc_id FROM #docs;
-
-			SET @EntityID = @Debtor;
 		END
 
 		------------------------------------------------------------------------------------
-		ELSE	-- JOURNALENTRY
+		-- Journal entry: no document matched, or the bill / invoice didn't fit (@DocReason)
+		IF @Scenario = 'JOURNALENTRY'
 		BEGIN
 			-- The other side: AP / AR for a known relation, else the suspense account
 			SELECT
@@ -648,7 +672,7 @@ BEGIN
 		(
 			BPA_EntryID, Bookdate, Amount, Currency, Memo, typematch, Scenario,
 			RelationID, Documents, DocumentIDs, DocAmountOpen, PayAmount, OffsetAccountID, WorkflowID,
-			ExternalID, NetsuiteEntryID, Result, Reason
+			ExternalID, NetsuiteEntryID, Result, Reason, Note
 		)
 		VALUES
 		(
@@ -658,7 +682,7 @@ BEGIN
 			CASE WHEN @Reason IS NOT NULL THEN 'skipped'
 				 WHEN @Preview = 1        THEN 'would be created'
 				 ELSE 'created' END,
-			@Reason
+			@Reason, @DocReason
 		);
 	END TRY
 	BEGIN CATCH
@@ -668,13 +692,13 @@ BEGIN
 		INSERT INTO #result
 		(
 			BPA_EntryID, Bookdate, Amount, Currency, Memo, typematch, Scenario,
-			RelationID, Documents, ExternalID, Result, Reason
+			RelationID, Documents, ExternalID, Result, Reason, Note
 		)
 		VALUES
 		(
 			@EntryID, @Bookdate, @Amount, @Currency, @Memo, @typematch, @Scenario,
 			COALESCE(@Creditor, @Debtor), @Documents, @ExternalID, 'error',
-			ERROR_MESSAGE() + ' (line ' + CAST(ERROR_LINE() AS varchar(10)) + ')'
+			ERROR_MESSAGE() + ' (line ' + CAST(ERROR_LINE() AS varchar(10)) + ')', @DocReason
 		);
 	END CATCH
 
@@ -694,7 +718,7 @@ GROUP BY Scenario, Result
 ORDER BY Scenario, Result;
 
 SELECT
-	Result, Reason, Scenario, BPA_EntryID, Bookdate, Amount, Currency, Memo, typematch,
+	Result, Reason, Note, Scenario, BPA_EntryID, Bookdate, Amount, Currency, Memo, typematch,
 	RelationID, Documents, DocumentIDs, DocAmountOpen, PayAmount, OffsetAccountID, WorkflowID,
 	ExternalID, NetsuiteEntryID
 FROM #result
