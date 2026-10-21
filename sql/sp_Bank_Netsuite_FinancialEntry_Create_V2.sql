@@ -541,7 +541,7 @@ BEGIN
 			BEGIN
 				SELECT TOP (1)
 					@RuleAcctFound    = 1
-				,	@RuleAcctName     = a.acctNumber + ' ' + a.acctName
+				,	@RuleAcctName     = ISNULL(a.acctNumber + ' ', '') + ISNULL(a.acctName, a.id)
 				,	@RuleAcctInactive = ISNULL(a.isInactive, 0)
 				,	@RuleAcctSummary  = ISNULL(a.isSummary, 0)
 				,	@RuleAcctType     = COALESCE(a.acctTypeId, a.acctTypeRefName)
