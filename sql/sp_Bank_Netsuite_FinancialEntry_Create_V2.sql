@@ -632,7 +632,7 @@ BEGIN
 	FETCH NEXT FROM Transaction_Cursor INTO
 		@EntryID, @Origin, @Bookdate, @Amount, @Currency, @Memo, @ExternalID,
 		@typematch, @Creditor, @Debtor, @Reference, @ReferenceXML,
-	@RuleGLCode, @DepartmentID, @ClassID, @WorkflowID;
+		@RuleGLCode, @DepartmentID, @ClassID, @WorkflowID;
 END
 
 CLOSE Transaction_Cursor;
