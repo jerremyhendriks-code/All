@@ -25,6 +25,13 @@ GO
     9. Reads the snapshot of sp_Bank_Synchronise_Company_V2 (vw_Bank_Open_VendorBill, vw_Bank_Open_Invoice,
        vw_Bank_Relation_IBAN) instead of every load in the NetSuite FROM tables: only open documents
        of the latest load, one row per document. Amounts are compared to the cent (was exact float =).
+   10. Workflow rules on again (vw_Bank_Matching / fn_Bank_Match_Rules, see vw_Bank_Matching.sql), filtered on the
+       bank account's subsidiary (was CompanyID, which isn't filled for NetSuite):
+         IBANWF      relation from a rule on the counterparty IBAN
+         CUSTOMERWF  relation from a rule on description / amount / reference
+         MATCH       GL account, relation, VAT code, department (Costcenter) and class (CostUnit) from the most
+                     specific fitting rule, when the transaction isn't matched to a document
+       GLCode / Costcenter / CostUnit / VatCode are NetSuite ids, nvarchar(100) (were Exact codes, 9-10 chars).
 */
 CREATE OR ALTER FUNCTION [dbo].[fn_Bank_Match_V2]
 	(
@@ -46,18 +53,18 @@ CREATE OR ALTER FUNCTION [dbo].[fn_Bank_Match_V2]
 --declare @retreport TABLE
 Returns @retreport TABLE
 (
-		GLCode char(9),
+		GLCode nvarchar(100),			-- BANK ENGINE: was char(9); NetSuite account id
 		vendor_id nvarchar(100),		-- BANK ENGINE: was nvarchar(6)
 		customer_id nvarchar(100),		-- BANK ENGINE: was nvarchar(6)
-		Costcenter varchar(10),
-		CostUnit nvarchar(10),
+		Costcenter nvarchar(100),		-- BANK ENGINE: was varchar(10); NetSuite department id
+		CostUnit nvarchar(100),			-- BANK ENGINE: was nvarchar(10); NetSuite class id
 		Reference nvarchar(60),			-- BANK ENGINE: was nvarchar(20)
 		typematch nvarchar(50),
 		--IBAN nvarchar(34),
 		--BIC nvarchar(20),
 		--Bankname nvarchar(100),
 		NewCustomer int,
-		VatCode nvarchar(10),
+		VatCode nvarchar(100),			-- BANK ENGINE: was nvarchar(10)
 		ReferenceXML xml,
 		WorkflowNumber int,
 		WorkflowID uniqueidentifier
@@ -154,21 +161,21 @@ END
 		,@WorkflowID uniqueidentifier
 
 DECLARE 	@Journal nvarchar(20),
-			@DefaultGLCodevendor_id as nvarchar(9),
-			@DefaultGLCodecustomer_id as nvarchar(9),
+			@DefaultGLCodevendor_id as nvarchar(100),		-- BANK ENGINE: was nvarchar(9)
+			@DefaultGLCodecustomer_id as nvarchar(100),	-- BANK ENGINE: was nvarchar(9)
 			@ReferenceXML xml,
 			@GLCode_PaidDifference as nvarchar(9)
 
-DECLARE @costCenter nvarchar(20),
-		@CostUnit nvarchar(20),
-		@vatcode nvarchar(10)
+DECLARE @costCenter nvarchar(100),		-- BANK ENGINE: was nvarchar(20)
+		@CostUnit nvarchar(100),		-- BANK ENGINE: was nvarchar(20)
+		@vatcode nvarchar(100)			-- BANK ENGINE: was nvarchar(10)
 
 DECLARE @Newcustomer bit=0
 DECLARE @typematch as varchar(50)
 DECLARE @vendor_id as varchar(100)		-- BANK ENGINE: was varchar(6)
 DECLARE @customer_id as varchar(100)	-- BANK ENGINE: was varchar(6)
 Declare @marge as float
-declare @GLCode varchar(9)
+declare @GLCode nvarchar(100)			-- BANK ENGINE: was varchar(9)
 declare @reference varchar(60)
 DECLARE @MinNumberLength int = 4		-- BANK ENGINE: shorter document numbers are not looked for in the description
 -- BANK ENGINE: description / payment reference with a space on both sides, so a document number can be
@@ -227,47 +234,32 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 
 
 
-	-- BANK ENGINE: IF/BEGIN/END commented out: only the (commented) workflow query was left, an empty block is a syntax error
-	--IF @vendor_id IS NULL or
-	--@customer_id IS NULL
-	--BEGIN
-		-- Zoek hier in de workflow regels of er een debiteur of crediteur is gekoppeld
-		-- Dit wordt dan gebruikt voor het zoeken van inkoop- of verkoopfactuur.
+	-- BANK ENGINE: workflow rule on the counterparty IBAN ("Submit and approve bankaccount"): IBAN -> relation.
+	-- Only rules whose GL code is an AP / AR account (CredDebCode C / D), and only when exactly one relation fits.
+	IF @vendor_id IS NULL OR @customer_id IS NULL
+	BEGIN
+		SELECT
+			 @typematch      = 'IBANWF'
+			,@vendor_id      = ISNULL(@vendor_id,   CASE WHEN COUNT(DISTINCT m.vendor_id)   = 1 THEN MAX(m.vendor_id)   END)
+			,@customer_id    = ISNULL(@customer_id, CASE WHEN COUNT(DISTINCT m.customer_id) = 1 THEN MAX(m.customer_id) END)
+			,@WorkflowNumber = MIN(m.WorkflowNumber)
+		FROM
+			dbo.vw_Bank_Matching m
+		WHERE
+			m.Company = @Company
+			AND m.BankAccount = UPPER(REPLACE(@BankAccount, ' ', ''))
+			AND m.BankaccountRelation = UPPER(REPLACE(@IBAN, ' ', ''))
+			AND (m.vendor_id IS NOT NULL OR m.customer_id IS NOT NULL)
+			AND ISNULL(m.CredDebCode, '') IN ('C', 'D')		-- alleen debiteur- en/of crediteurrekeningen
+		HAVING
+			COUNT(DISTINCT m.vendor_id) = 1
+			OR COUNT(DISTINCT m.customer_id) = 1
 
-		-- BANK ENGINE: set @customer_id=null removed: it threw away a customer found by IBAN
-		--select 'vw_BANK_Matching'
-		--SELECT
-		--	 @typematch = 'IBANWF'
-		--	,@vendor_id = isnull(@vendor_id,CASE WHEN COUNT(DISTINCT m.vendor_id) = 1 THEN MAX(m.vendor_id) END)
-		--	,@customer_id = isnull(@customer_id,CASE WHEN COUNT(DISTINCT m.customer_id) = 1 THEN MAX(m.customer_id) END)
-		--	,@WorkflowNumber=CASE	WHEN @vendor_id is null AND COUNT(DISTINCT m.vendor_id)=1 THEN MIN(m.WorkflowNumber)
-		--							WHEN @customer_id is null AND COUNT(DISTINCT m.customer_id) = 1	THEN MIN(m.WorkflowNumber) END
-
-		--FROM
-		--	vw_Bank_Matching m
-		--WHERE
-		--	m.BankAccount = @BankAccount
-		--	AND m.BankaccountRelation = @IBAN
-		--	AND (
-		--			m.vendor_id IS NOT NULL
-		--			OR
-		--			m.customer_id IS NOT NULL
-		--		)
-		--	AND isnull(m.CredDebCode,'') in ('C','D') -- Filter hier alleen debiteur en/of crediteurrekeningen eruit
-		--HAVING
-		--	(
-		--		COUNT(DISTINCT m.vendor_id) = 1
-		--		OR
-		--		COUNT(DISTINCT m.customer_id) = 1
-		--	)
-		--IF @typematch='IBANWF'
-		--	SELECT
-		--		@WorkflowID=m.WorkflowID
-		--	FROM
-		--		vw_Bank_Matching m
-		--	WHERE
-		--		@WorkflowNumber=WorkflowNumber
-	--END
+		IF @typematch = 'IBANWF'
+			SELECT @WorkflowID = m.WorkflowID
+			FROM dbo.vw_Bank_Matching m
+			WHERE m.WorkflowNumber = @WorkflowNumber
+	END
 
 
 
@@ -295,109 +287,30 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 
 
 	--set @vendor_id=null
-	-- BANK ENGINE: IF/BEGIN/END commented out: only the (commented) workflow query was left, an empty block is a syntax error
-	--IF @vendor_id IS NULL or
-	--@customer_id IS NULL
-	--BEGIN
-		-- Zoek hier in de workflow regels of er een debiteur of crediteur is gekoppeld
-		-- Dit wordt dan gebruikt voor het zoeken van inkoop- of verkoopfactuur.
+	-- BANK ENGINE: workflow rule on description / amount / reference etc. ("Submit and recognize relation"):
+	-- relation from the rule. Only rules whose GL code is an AP / AR account, only when exactly one relation fits.
+	IF @vendor_id IS NULL OR @customer_id IS NULL
+	BEGIN
+		SELECT
+			 @typematch      = 'CUSTOMERWF'
+			,@vendor_id      = ISNULL(@vendor_id,   CASE WHEN COUNT(DISTINCT m.vendor_id)   = 1 THEN MAX(m.vendor_id)   END)
+			,@customer_id    = ISNULL(@customer_id, CASE WHEN COUNT(DISTINCT m.customer_id) = 1 THEN MAX(m.customer_id) END)
+			,@WorkflowNumber = MIN(m.WorkflowNumber)
+		FROM
+			dbo.fn_Bank_Match_Rules(@Company, @BankAccount, @IBAN, @Amount, @Description, @kenmerk,
+									@betalingskenmerk, @Machtiging, @incassant, @Mutationcode) m
+		WHERE
+			(m.vendor_id IS NOT NULL OR m.customer_id IS NOT NULL)
+			AND ISNULL(m.CredDebCode, '') IN ('C', 'D')		-- alleen debiteur- en/of crediteurrekeningen
+		HAVING
+			COUNT(DISTINCT m.vendor_id) = 1
+			OR COUNT(DISTINCT m.customer_id) = 1
 
-				-- BANK ENGINE: set @customer_id=null removed: it threw away a customer found by IBAN
-		--select 'vw_bank_matching'
-
-		--SELECT
-		--	 @typematch = 'CUSTOMERWF'
-		--	,@vendor_id = isnull(@vendor_id,CASE WHEN COUNT(DISTINCT m.vendor_id) = 1 THEN MAX(m.vendor_id) END)
-		--	,@customer_id = isnull(@customer_id,CASE WHEN COUNT(DISTINCT m.customer_id) = 1 THEN MAX(m.customer_id) END)
-		--	,@WorkflowNumber=CASE WHEN @vendor_id is null AND COUNT(DISTINCT m.vendor_id)=1 THEN MIN(m.WorkflowNumber)
-		--						WHEN @customer_id is null AND COUNT(DISTINCT m.customer_id) = 1 THEN MIN(m.WorkflowNumber) END
-		--FROM
-		--	vw_Bank_Matching m
-		--WHERE
-		--		m.CompanyID=@CompanyID
-		--	AND
-		--		m.BankAccount=@BankAccount
-		--	AND
-		--	(
-		--		m.BankaccountRelation = @IBAN
-		--		OR
-		--		m.BankaccountRelation is null
-		--	)
-		--	AND
-		--	(
-		--		@Description LIKE '%'+m.Description+'%'
-		--		OR
-		--		[Description] is null
-		--	)
-		--	AND
-		--	(
-		--		Amount is null
-		--		or
-		--		(isnull(AmountCompare,'')='=' and @amount=Amount)
-		--		or
-		--		(AmountCompare='<' and @amount<Amount)
-		--		or
-		--		(AmountCompare='>' and @amount>Amount)
-		--		or
-		--		(AmountCompare='<>' and @amount between Amount and AmountTo)
-		--	)
-		--	AND
-		--	(
-		--		m.PaymentDirection='A'
-		--		OR
-		--			(
-		--				m.PaymentDirection='P'
-		--				AND @amount > 0
-		--			)
-		--			OR
-		--			(
-		--				m.PaymentDirection='N'
-		--				AND @amount<0
-		--			)
-		--	)
-		--	AND
-		--	(
-		--		m.MutationCode is null
-		--		OR
-		--		m.MutationCode=@Mutationcode
-		--	)
-		--	AND (
-		--			m.Kenmerk is null
-		--			OR
-		--			@kenmerk like '%' + m.Kenmerk+'%'
-		--		)
-		--	AND (
-		--			m.Betalingskenmerk is null
-		--			OR
-		--			@Betalingskenmerk like '%' + m.Betalingskenmerk+'%'
-		--		)
-		--	AND (
-		--			m.Machtiging is null
-		--			OR
-		--			@Machtiging like '%' + m.Machtiging+'%'
-		--		)
-		--	AND (
-		--			m.Incassant is null
-		--			OR
-		--			@Incassant like '%' + m.Incassant+'%'
-		--		)
-		--	AND
-		--		isnull(m.CredDebCode,'') in ('C','D') -- Filter hier alleen debiteur en/of crediteurrekeningen eruit
-		--HAVING
-		--	(
-		--		COUNT(DISTINCT m.vendor_id) = 1
-		--		OR
-		--		COUNT(DISTINCT m.customer_id) = 1
-		--	)
-
-		--IF @typematch='CUSTOMERWF'
-		--	SELECT
-		--		@WorkflowID=m.WorkflowID
-		--	FROM
-		--		vw_Bank_Matching m
-		--	WHERE
-		--		@WorkflowNumber=WorkflowNumber
-	--END
+		IF @typematch = 'CUSTOMERWF'
+			SELECT @WorkflowID = m.WorkflowID
+			FROM dbo.vw_Bank_Matching m
+			WHERE m.WorkflowNumber = @WorkflowNumber
+	END
 
 	-- BANK ENGINE: geld eruit en nog geen crediteur via IBAN: zoek de crediteur ahv een inkoopfactuurnummer
 	-- in de omschrijving (alleen als precies 1 crediteur zo'n factuur heeft).
@@ -680,172 +593,48 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 	end
 
 
-	-- select 'Workflowregels'
-	---- Hier is alleen via bankrekening herkend, geen openstaande post is gekoppeld. Er is een matchingsregel, gebruik deze dan.
-	--IF (@typematch='IBANWF' or @typematch='IBAN' or @typematch='IBANSalesInvoice' or (@typematch='Salesinvoice' and @reference is null))
-	--	and exists( SELECT *
-	--			FROM
-	--				vw_Bank_Matching m
-	--			WHERE
-	--					m.CompanyID=@CompanyID
-	--				AND
-	--					m.BankAccount=@BankAccount
-	--				AND
-	--				(
-	--					m.BankaccountRelation = @IBAN
-	--					OR
-	--					m.BankaccountRelation is null
-	--				)
-	--				AND
-	--				(
-	--					@Description LIKE '%'+m.[Description]+'%'
-	--					OR
-	--					[Description] is null
-	--				)
-	--				AND
-	--				(
-	--					Amount is null
-	--					or
-	--					(isnull(AmountCompare,'')='=' and @amount=Amount)
-	--					or
-	--					(AmountCompare='<' and @amount<Amount)
-	--					or
-	--					(AmountCompare='>' and @amount>Amount)
-	--					or
-	--					(AmountCompare='<>' and @amount between Amount and AmountTo)
+	-- BANK ENGINE: workflow rules ("Submit and approve"). Recognised only by IBAN (no document matched) and a rule
+	-- fits: the rule decides. typematch 'MATCH': GL code (NetSuite account id), relation, VAT code, cost centre
+	-- (department) and cost unit (class) from the most specific fitting rule; the engine books a journal entry
+	-- on that GL account. A relation already known stays when the rule has none.
+	IF (@typematch IN ('IBANWF', 'IBAN', 'IBANSalesInvoice', 'CUSTOMERWF') OR (@typematch = 'SalesInvoice' AND @reference IS NULL))
+		AND @reference IS NULL AND @ReferenceXML IS NULL		-- no document matched
+		AND EXISTS (SELECT 1
+					FROM dbo.fn_Bank_Match_Rules(@Company, @BankAccount, @IBAN, @Amount, @Description, @kenmerk,
+												 @betalingskenmerk, @Machtiging, @incassant, @Mutationcode) m
+					WHERE m.GLcode IS NOT NULL
+					  AND ISNULL(m.CredDebCode, '') NOT IN ('C', 'D'))
+	BEGIN
+		SET @typematch = NULL
+	END
 
-	--				)
-	--				AND
-	--				(
-	--					m.PaymentDirection='A'
-	--					OR
-	--						(
-	--							m.PaymentDirection='P'
-	--							AND @amount > 0
-	--						)
-	--						OR
-	--						(
-	--							m.PaymentDirection='N'
-	--							AND @amount<0
-	--						)
-	--				)
-	--				AND
-	--				(
-	--					m.MutationCode is null
-	--					OR
-	--					m.MutationCode=@Mutationcode
-	--				)
-	--				AND (
-	--						m.Kenmerk is null
-	--						OR
-	--						@kenmerk like '%' + m.Kenmerk+'%'
-	--					)
-	--				AND (
-	--						m.Betalingskenmerk is null
-	--						OR
-	--						@Betalingskenmerk like '%' + m.Betalingskenmerk+'%'
-	--					)
-	--				AND (
-	--						m.Machtiging is null
-	--						OR
-	--						@Machtiging like '%' + m.Machtiging+'%'
-	--					)
-	--				AND (
-	--						m.Incassant is null
-	--						OR
-	--						@Incassant like '%' + m.Incassant+'%'
-	--					)
-	--)
+	IF @typematch IS NULL
+	BEGIN
+		SELECT TOP (1)
+			@glcode         = m.GLcode,
+			@typematch      = 'MATCH',
+			@vatcode        = m.VATcode,
+			@vendor_id      = COALESCE(m.vendor_id, @vendor_id),
+			@customer_id    = COALESCE(m.customer_id, @customer_id),
+			@costunit       = m.CostUnit,
+			@costCenter     = m.CostCenter,
+			@WorkflowNumber = m.WorkflowNumber,
+			@WorkflowID     = m.WorkflowID
+		FROM
+			dbo.fn_Bank_Match_Rules(@Company, @BankAccount, @IBAN, @Amount, @Description, @kenmerk,
+									@betalingskenmerk, @Machtiging, @incassant, @Mutationcode) m
+		WHERE
+			m.GLcode IS NOT NULL
+			AND ISNULL(m.CredDebCode, '') NOT IN ('C', 'D')	-- relation rules (AP / AR) are IBANWF / CUSTOMERWF above
+		ORDER BY
+			m.Specificity DESC, m.WorkflowNumber DESC
 
-	--BEGIN
-	--	set @typematch=null
-	--END
-
-
-	--IF @typematch is null
-	--BEGIN
-	--	SELECT
-	--		@glcode=m.GLcode,
-	--		@typematch='MATCH',
-	--		@vatcode=VATcode,
-	--		@vendor_id=m.vendor_id,
-	--		@customer_id=m.customer_id,
-	--		@costunit=m.CostUnit,
-	--		@costCenter=m.CostCenter,
-	--		@WorkflowNumber=m.WorkflowNumber,
-	--		@WorkflowID=m.WorkflowID
-
-	--	FROM
-	--		vw_Bank_Matching m
-	--	WHERE
-	--			m.CompanyID=@CompanyID
-	--		AND
-	--			m.BankAccount=@BankAccount
-	--		AND
-	--		(
-	--			m.BankaccountRelation = @IBAN
-	--			OR
-	--			m.BankaccountRelation is null
-	--		)
-	--		AND
-	--		(
-	--			@Description LIKE '%'+m.[Description]+'%'
-	--			OR
-	--			[Description] is null
-	--		)
-	--		AND
-	--		(
-	--			Amount is null
-	--			or
-	--			(isnull(AmountCompare,'')='=' and @amount=Amount)
-	--			or
-	--			(AmountCompare='<' and @amount<Amount)
-	--			or
-	--			(AmountCompare='>' and @amount>Amount)
-	--			or
-	--			(AmountCompare='<>' and @amount between Amount and AmountTo)
-	--		)
-	--		AND
-	--		(
-	--			m.PaymentDirection='A'
-	--			OR
-	--				(
-	--					m.PaymentDirection='P'
-	--					AND @amount > 0
-	--				)
-	--				OR
-	--				(
-	--					m.PaymentDirection='N'
-	--					AND @amount<0
-	--				)
-	--		)
-	--		AND
-	--		(
-	--			m.MutationCode is null
-	--			OR
-	--			m.MutationCode=@Mutationcode
-	--		)
-	--		AND (
-	--				m.Kenmerk is null
-	--				OR
-	--				@kenmerk like '%' + m.Kenmerk+'%'
-	--			)
-	--		AND (
-	--				m.Betalingskenmerk is null
-	--				OR
-	--				@Betalingskenmerk like '%' + m.Betalingskenmerk+'%'
-	--			)
-	--		AND (
-	--				m.Machtiging is null
-	--				OR
-	--				@Machtiging like '%' + m.Machtiging+'%'
-	--			)
-	--		AND (
-	--				m.Incassant is null
-	--				OR
-	--				@Incassant like '%' + m.Incassant+'%'
-	--			)
-	--END
+		-- A relation from the rule can't be both: the direction of the money decides
+		IF @typematch = 'MATCH' AND @vendor_id IS NOT NULL AND @customer_id IS NOT NULL
+		BEGIN
+			IF @amount < 0 SET @customer_id = NULL ELSE SET @vendor_id = NULL
+		END
+	END
 
 	IF @typematch is null
 	BEGIN

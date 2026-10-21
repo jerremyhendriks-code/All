@@ -34,6 +34,8 @@ GO
        JOURNALENTRY     tb_Netsuite_JournalEntry + _Line, two lines:
                         line 0  bank GL account   (money in = debit, money out = credit)
                         line 1  the other side:
+                                workflow rule  -> the rule's GL account (typematch MATCH), with the rule's
+                                                  relation, department (Costcenter) and class (CostUnit)
                                 vendor known   -> AP account, entity = vendor
                                 customer known -> AR account, entity = customer
                                 nothing known  -> suspense account: UnknownCreditor (money out)
@@ -97,6 +99,7 @@ SET
 ,	Matched_Reference    = m.Reference
 ,	Matched_VatCode      = m.VatCode
 ,	Matched_ReferenceXML = m.ReferenceXML
+,	Matched_WorkflowID   = m.WorkflowID
 FROM tb_Bank_Transactions Transactions
 CROSS APPLY dbo.fn_Bank_Match_V2('BANK', Transactions.BPA_EntryID, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL) m
 WHERE Transactions.BPA_Status = 0
@@ -120,6 +123,7 @@ CREATE TABLE #result
 ,	DocAmountOpen        decimal(18, 2)   NULL	-- open amount of the document(s)
 ,	PayAmount            decimal(18, 2)   NULL
 ,	OffsetAccountID      nvarchar(100)    NULL	-- journal entry line 1
+,	WorkflowID           uniqueidentifier NULL	-- workflow rule used (typematch MATCH)
 ,	ExternalID           nvarchar(255)    NULL
 ,	NetsuiteEntryID      uniqueidentifier NULL
 ,	Result               varchar(20)      NOT NULL	-- created / would be created / skipped / error
@@ -162,6 +166,10 @@ DECLARE
 ,	@Debtor           nvarchar(100)
 ,	@Reference        nvarchar(60)
 ,	@ReferenceXML     xml
+,	@RuleGLCode       nvarchar(100)		-- from a workflow rule: NetSuite account id
+,	@DepartmentID     nvarchar(100)		-- from a workflow rule: cost centre = NetSuite department
+,	@ClassID          nvarchar(100)		-- from a workflow rule: cost unit = NetSuite class
+,	@WorkflowID       uniqueidentifier
 ,	@Scenario         varchar(20)
 	-- bank account settings
 ,	@SubsidiaryID     nvarchar(100)
@@ -206,6 +214,10 @@ DECLARE Transaction_Cursor CURSOR LOCAL STATIC READ_ONLY FORWARD_ONLY FOR
 	,	t.Matched_Debtor
 	,	LTRIM(RTRIM(t.Matched_Reference))
 	,	CAST(t.Matched_ReferenceXML AS xml)
+	,	CASE WHEN t.Matched_typematch = 'MATCH' THEN NULLIF(LTRIM(RTRIM(t.Matched_GLCode)), '') END
+	,	NULLIF(t.Matched_Costcenter, '')
+	,	NULLIF(t.Matched_CostUnit, '')
+	,	t.Matched_WorkflowID
 	FROM tb_Bank_Transactions t
 	WHERE t.BPA_Status = 0
 		AND t.BPA_Company = @BPA_Company
@@ -215,7 +227,8 @@ DECLARE Transaction_Cursor CURSOR LOCAL STATIC READ_ONLY FORWARD_ONLY FOR
 OPEN Transaction_Cursor;
 FETCH NEXT FROM Transaction_Cursor INTO
 	@EntryID, @Origin, @Bookdate, @Amount, @Currency, @Memo, @ExternalID,
-	@typematch, @Creditor, @Debtor, @Reference, @ReferenceXML;
+	@typematch, @Creditor, @Debtor, @Reference, @ReferenceXML,
+	@RuleGLCode, @DepartmentID, @ClassID, @WorkflowID;
 
 WHILE @@FETCH_STATUS = 0
 BEGIN
@@ -501,6 +514,7 @@ BEGIN
 				@EntityID        = COALESCE(@Creditor, @Debtor)
 			,	@OffsetAccountID =
 					CASE
+						WHEN @RuleGLCode IS NOT NULL THEN @RuleGLCode	-- workflow rule
 						WHEN @Creditor IS NOT NULL THEN @APAccountID
 						WHEN @Debtor   IS NOT NULL THEN @ARAccountID
 						WHEN @Amount < 0           THEN @UnknownCreditor
@@ -514,6 +528,9 @@ BEGIN
 					WHEN @SubsidiaryID IS NULL                THEN 'No subsidiary (Company) for bank account ' + ISNULL(@Origin, '')
 					WHEN @BankAccountID IS NULL               THEN 'No GLCodeBank for bank account ' + ISNULL(@Origin, '')
 					WHEN @CurrencyID IS NULL                  THEN 'Unknown currency ' + ISNULL(@Currency, '')
+					WHEN @RuleGLCode IS NOT NULL
+					 AND NOT EXISTS (SELECT 1 FROM tb_Netsuite_Account a WHERE a.id = @RuleGLCode)
+					                                          THEN 'GL account ' + @RuleGLCode + ' of the workflow rule is not a NetSuite account'
 					WHEN @OffsetAccountID IS NULL             THEN
 						CASE
 							WHEN @Creditor IS NOT NULL THEN 'No AP account (DefaultGLCodeCreditor) for bank account ' + @Origin
@@ -547,7 +564,7 @@ BEGIN
 				(
 					BPA_EntryID, BPA_ParentID, BPA_Origin, BPA_Direction, BPA_Action, BPA_Status, BPA_Company,
 					BPA_Reference, BPA_Orig_Entryid, BPA_Syscreator,
-					line, accountId, debit, credit, entityId, memo
+					line, accountId, debit, credit, entityId, departmentId, classId, memo
 				)
 				VALUES
 				-- Line 0: bank. Money in = debit, money out = credit
@@ -557,16 +574,16 @@ BEGIN
 					0, @BankAccountID,
 					CASE WHEN @Amount > 0 THEN @PayAmount END,
 					CASE WHEN @Amount < 0 THEN @PayAmount END,
-					NULL, @Memo
+					NULL, NULL, NULL, @Memo
 				),
-				-- Line 1: the other side, with the vendor / customer when known
+				-- Line 1: the other side, with the vendor / customer when known, department / class from a workflow rule
 				(
 					NEWID(), @NewEntryID, @Origin, 'TO', 'A', 0, @BPA_Company,
 					LEFT(@ExternalID, 50), @EntryID, @Creator,
 					1, @OffsetAccountID,
 					CASE WHEN @Amount < 0 THEN @PayAmount END,
 					CASE WHEN @Amount > 0 THEN @PayAmount END,
-					@EntityID, @Memo
+					@EntityID, @DepartmentID, @ClassID, @Memo
 				);
 
 				UPDATE tb_Bank_Transactions
@@ -581,13 +598,13 @@ BEGIN
 		INSERT INTO #result
 		(
 			BPA_EntryID, Bookdate, Amount, Currency, Memo, typematch, Scenario,
-			RelationID, Documents, DocumentIDs, DocAmountOpen, PayAmount, OffsetAccountID,
+			RelationID, Documents, DocumentIDs, DocAmountOpen, PayAmount, OffsetAccountID, WorkflowID,
 			ExternalID, NetsuiteEntryID, Result, Reason
 		)
 		VALUES
 		(
 			@EntryID, @Bookdate, @Amount, @Currency, @Memo, @typematch, @Scenario,
-			@EntityID, @Documents, @DocumentIDs, @DocAmountOpen, @PayAmount, @OffsetAccountID,
+			@EntityID, @Documents, @DocumentIDs, @DocAmountOpen, @PayAmount, @OffsetAccountID, @WorkflowID,
 			@ExternalID, @NewEntryID,
 			CASE WHEN @Reason IS NOT NULL THEN 'skipped'
 				 WHEN @Preview = 1        THEN 'would be created'
@@ -614,7 +631,8 @@ BEGIN
 
 	FETCH NEXT FROM Transaction_Cursor INTO
 		@EntryID, @Origin, @Bookdate, @Amount, @Currency, @Memo, @ExternalID,
-		@typematch, @Creditor, @Debtor, @Reference, @ReferenceXML;
+		@typematch, @Creditor, @Debtor, @Reference, @ReferenceXML,
+	@RuleGLCode, @DepartmentID, @ClassID, @WorkflowID;
 END
 
 CLOSE Transaction_Cursor;
@@ -628,7 +646,7 @@ ORDER BY Scenario, Result;
 
 SELECT
 	Result, Reason, Scenario, BPA_EntryID, Bookdate, Amount, Currency, Memo, typematch,
-	RelationID, Documents, DocumentIDs, DocAmountOpen, PayAmount, OffsetAccountID,
+	RelationID, Documents, DocumentIDs, DocAmountOpen, PayAmount, OffsetAccountID, WorkflowID,
 	ExternalID, NetsuiteEntryID
 FROM #result
 ORDER BY CASE Result WHEN 'error' THEN 0 WHEN 'skipped' THEN 2 ELSE 1 END, Scenario, Bookdate, BPA_EntryID;
