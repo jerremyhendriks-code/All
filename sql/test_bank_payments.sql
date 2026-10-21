@@ -35,8 +35,8 @@ DECLARE @VendorIBAN    varchar(34)    = NULL;           -- our bank account payi
 DECLARE @CustomerIBAN  varchar(34)    = NULL;           -- our bank account receiving the invoice; NULL = the first complete one of @CustomerCompany
 DECLARE @TestAmount    decimal(18, 2) = 10.00;          -- paid on the bill and on the invoice
 DECLARE @DummyIBAN     varchar(34)    = 'NL00TEST0000000001';
-DECLARE @VB_BillID     nvarchar(100)  = NULL;           -- NULL = pick an open bill of @Company
-DECLARE @INV_InvoiceID nvarchar(100)  = NULL;           -- NULL = pick an open invoice of @Company
+DECLARE @VB_BillID     nvarchar(100)  = NULL;           -- NULL = pick an open bill of @VendorCompany
+DECLARE @INV_InvoiceID nvarchar(100)  = NULL;           -- NULL = pick an open invoice of @CustomerCompany
 -- ===================
 
 DECLARE @run       varchar(14)  = FORMAT(GETDATE(), 'yyyyMMddHHmmss');
