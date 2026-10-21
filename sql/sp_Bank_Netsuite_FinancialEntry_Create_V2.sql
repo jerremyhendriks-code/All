@@ -19,12 +19,15 @@ GO
                                                                           or ReferenceXML
         anything else                                                                        -> JOURNALENTRY
 
+    0. Refresh the snapshot of open bills / invoices / relation IBANs for @BPA_Company
+       (sp_Bank_Synchronise_Company_V2), unless @Synchronise = 0.
     1. Match all open transactions of @BPA_Company with fn_Bank_Match_V2 (fills Matched_*).
     2. A cursor walks the open transactions, oldest first; one NetSuite record per transaction.
 
        VENDORPAYMENT    tb_Netsuite_VendorPayment + _Apply (one line: the bill, ABS(bank amount)).
-                        Bill = Matched_Creditor + bill number, latest loaded row per bill.
+                        Bill = Matched_Creditor + bill number, from the snapshot (vw_Bank_Open_VendorBill).
        CUSTOMERPAYMENT  tb_Netsuite_CustomerPayment + _Apply, paid into the bank GL account.
+                        Invoices from the snapshot (vw_Bank_Open_Invoice).
                         One invoice (Matched_Reference): one line for the bank amount.
                         A list (Matched_ReferenceXML): one line per invoice for its open amount;
                         the open amounts must add up to the bank amount.
@@ -62,18 +65,24 @@ GO
         EXEC sp_Bank_Netsuite_FinancialEntry_Create_V2 '89';
         EXEC sp_Bank_Netsuite_FinancialEntry_Create_V2 '89', @Preview = 1;      -- only matches (Matched_*), creates nothing
         EXEC sp_Bank_Netsuite_FinancialEntry_Create_V2 '89', @BPA_EntryID = '<one bank transaction>';
+        EXEC sp_Bank_Netsuite_FinancialEntry_Create_V2 '89', @Synchronise = 0;  -- keep the current snapshot
 */
 CREATE OR ALTER PROCEDURE [dbo].[sp_Bank_Netsuite_FinancialEntry_Create_V2]
 (
 	@BPA_Company varchar(50)
 ,	@BPA_EntryID uniqueidentifier = NULL	-- NULL = all open transactions of @BPA_Company
 ,	@Preview     bit = 0					-- 1 = match and report, create no NetSuite records
+,	@Synchronise bit = 1					-- 1 = refresh the open items snapshot of @BPA_Company first
 )
 AS
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
 DECLARE @Creator nvarchar(50) = N'sp_Bank_Netsuite_FinancialEntry_Create_V2';
+
+-- 0. Fresh snapshot of open bills / invoices / relation IBANs (no report from the synch SP)
+IF @Synchronise = 1
+	EXEC dbo.sp_Bank_Synchronise_Company_V2 @Subsidiary = @BPA_Company, @Report = 0;
 
 -- 1. Match the open transactions
 UPDATE Transactions
@@ -258,26 +267,16 @@ BEGIN
 		------------------------------------------------------------------------------------
 		IF @Scenario = 'VENDORPAYMENT'
 		BEGIN
-			-- The bill(s) of this vendor with this number; latest loaded row per bill
+			-- The open bill(s) of this vendor with this number (snapshot: one row per bill)
 			SELECT
 				@BillsFound       = COUNT(*)
 			,	@VendorBillID     = MAX(b.vendor_bill_id)
 			,	@BillAmountOpen   = MAX(b.amount_open)
 			,	@BillSubsidiaryID = MAX(b.subsidiary_id)
 			,	@BillCurrencyID   = MAX(b.currency_id)
-			FROM (
-				SELECT
-					CAST(v.vendor_bill_id AS nvarchar(100))                 AS vendor_bill_id
-				,	TRY_CAST(v.amount_open AS decimal(18, 2))               AS amount_open
-				,	CAST(v.subsidiary_id AS nvarchar(100))                  AS subsidiary_id
-				,	CAST(v.currency_id AS nvarchar(100))                    AS currency_id
-				,	ROW_NUMBER() OVER (PARTITION BY v.vendor_bill_id
-									   ORDER BY v.BPA_Syscreated DESC, v.BPA_EntryID DESC) AS rn
-				FROM tb_Netsuite_VendorBill v
-				WHERE CAST(v.vendor_id AS nvarchar(100)) = @Creditor
-					AND LTRIM(RTRIM(v.vendor_bill_number)) = @Reference
-			) b
-			WHERE b.rn = 1;
+			FROM dbo.vw_Bank_Open_VendorBill b
+			WHERE b.vendor_id = @Creditor
+				AND b.vendor_bill_number = @Reference;
 
 			SELECT @Documents = @Reference, @DocumentIDs = @VendorBillID, @DocAmountOpen = @BillAmountOpen;
 
@@ -286,7 +285,7 @@ BEGIN
 				CASE
 					WHEN @Amount >= 0                         THEN 'Money coming in, not a payment to the vendor'
 					WHEN @ExternalID IS NULL                  THEN 'No BPA_Origin / BPA_Reference for the externalId'
-					WHEN @BillsFound = 0                      THEN 'Vendor bill ' + @Reference + ' not found for vendor ' + @Creditor
+					WHEN @BillsFound = 0                      THEN 'No open vendor bill ' + @Reference + ' for vendor ' + @Creditor
 					WHEN @BillsFound > 1                      THEN 'Vendor ' + @Creditor + ' has ' + CAST(@BillsFound AS varchar(10)) + ' bills numbered ' + @Reference
 					WHEN @BillAmountOpen IS NULL
 					  OR @BillAmountOpen <= 0                 THEN 'Vendor bill ' + @Reference + ' is not open'
@@ -371,7 +370,7 @@ BEGIN
 				SELECT DISTINCT LTRIM(RTRIM(n.c.value('.', 'nvarchar(100)')))
 				FROM @ReferenceXML.nodes('/Invoices/invoice_number') n(c);
 
-			-- Each invoice of this customer with this number; latest loaded row per invoice
+			-- Each open invoice of this customer with this number (snapshot: one row per invoice)
 			UPDATE d
 			SET found         = x.invoices
 			,	doc_id        = x.invoice_id
@@ -386,19 +385,9 @@ BEGIN
 				,	MAX(i.amount_open)    AS amount_open
 				,	MAX(i.subsidiary_id)  AS subsidiary_id
 				,	MAX(i.currency_id)    AS currency_id
-				FROM (
-					SELECT
-						CAST(inv.invoice_id AS nvarchar(100))               AS invoice_id
-					,	TRY_CAST(inv.amount_open AS decimal(18, 2))         AS amount_open
-					,	CAST(inv.subsidiary_id AS nvarchar(100))            AS subsidiary_id
-					,	CAST(inv.currency_id AS nvarchar(100))              AS currency_id
-					,	ROW_NUMBER() OVER (PARTITION BY inv.invoice_id
-										   ORDER BY inv.BPA_Syscreated DESC, inv.BPA_EntryID DESC) AS rn
-					FROM tb_Netsuite_Invoice inv
-					WHERE CAST(inv.customer_id AS nvarchar(100)) = @Debtor
-						AND LTRIM(RTRIM(inv.invoice_number)) = d.doc_number
-				) i
-				WHERE i.rn = 1
+				FROM dbo.vw_Bank_Open_Invoice i
+				WHERE i.customer_id = @Debtor
+					AND i.invoice_number = d.doc_number
 			) x;
 
 			SELECT @DocCount = COUNT(*), @DocAmountOpen = SUM(amount_open) FROM #docs;
@@ -419,8 +408,8 @@ BEGIN
 					WHEN @ExternalID IS NULL                  THEN 'No BPA_Origin / BPA_Reference for the externalId'
 					WHEN @DocCount = 0                        THEN 'No invoice number in the match'
 					WHEN EXISTS (SELECT 1 FROM #docs WHERE found = 0)
-					                                          THEN 'Invoice ' + (SELECT TOP 1 doc_number FROM #docs WHERE found = 0 ORDER BY line)
-					                                               + ' not found for customer ' + @Debtor
+					                                          THEN 'No open invoice ' + (SELECT TOP 1 doc_number FROM #docs WHERE found = 0 ORDER BY line)
+					                                               + ' for customer ' + @Debtor
 					WHEN EXISTS (SELECT 1 FROM #docs WHERE found > 1)
 					                                          THEN 'Customer ' + @Debtor + ' has more than one invoice numbered '
 					                                               + (SELECT TOP 1 doc_number FROM #docs WHERE found > 1 ORDER BY line)

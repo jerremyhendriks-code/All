@@ -21,6 +21,10 @@ GO
     6. A document number only counts as a whole word in the description / payment reference: no letter
        or digit directly before or after it ('1293' doesn't match '10011293', 'INV-1293 ' does match).
     7. Only bills / invoices of the bank account's own subsidiary (Company in vw_Bank_BankAccounts).
+    8. A customer found by IBAN is kept (two leftover "set @customer_id=null" lines threw it away).
+    9. Reads the snapshot of sp_Bank_Synchronise_Company_V2 (vw_Bank_Open_VendorBill, vw_Bank_Open_Invoice,
+       vw_Bank_Relation_IBAN) instead of every load in the NetSuite FROM tables: only open documents
+       of the latest load, one row per document. Amounts are compared to the cent (was exact float =).
 */
 CREATE OR ALTER FUNCTION [dbo].[fn_Bank_Match_V2]
 	(
@@ -203,11 +207,11 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 								--WHEN count(distinct case when b.DefaultBankAccount=1 then  b.Debnr end)=1
 								--	THEN max(distinct case when b.DefaultBankAccount=1 then  b.Debnr end)
 						  END
-	FROM [tb_Netsuite_Bank_account_details] b
+	FROM dbo.vw_Bank_Relation_IBAN b		-- BANK ENGINE: snapshot (was tb_Netsuite_Bank_account_details)
 	WHERE
 		--b.CompanyID=@CompanyID
 		--and
-		b.custrecord_2663_entity_iban = @IBAN
+		b.custrecord_2663_entity_iban = UPPER(REPLACE(@IBAN, ' ', ''))		-- BANK ENGINE: snapshot IBANs are upper case without spaces
 
 	having
 		(
@@ -229,7 +233,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 		-- Zoek hier in de workflow regels of er een debiteur of crediteur is gekoppeld
 		-- Dit wordt dan gebruikt voor het zoeken van inkoop- of verkoopfactuur.
 
-		set @customer_id=null
+		-- BANK ENGINE: set @customer_id=null removed: it threw away a customer found by IBAN
 		--select 'vw_BANK_Matching'
 		--SELECT
 		--	 @typematch = 'IBANWF'
@@ -278,7 +282,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 				, @customer_id = i.customer_id
 
 			FROM
-				tb_Netsuite_Invoice i
+				dbo.vw_Bank_Open_Invoice i		-- BANK ENGINE: snapshot (was tb_Netsuite_Invoice)
 			WHERE
 				--CompanyID=@CompanyID
 				--AND
@@ -296,7 +300,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 		-- Zoek hier in de workflow regels of er een debiteur of crediteur is gekoppeld
 		-- Dit wordt dan gebruikt voor het zoeken van inkoop- of verkoopfactuur.
 
-				set @customer_id=null
+				-- BANK ENGINE: set @customer_id=null removed: it threw away a customer found by IBAN
 		--select 'vw_bank_matching'
 
 		--SELECT
@@ -400,7 +404,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 		SELECT
 			@vendor_id = CASE WHEN COUNT(DISTINCT v.vendor_id) = 1 THEN MAX(v.vendor_id) END
 		FROM
-			tb_Netsuite_vendorBill v
+			dbo.vw_Bank_Open_VendorBill v		-- BANK ENGINE: snapshot (was tb_Netsuite_vendorBill)
 		WHERE
 			LEN(LTRIM(RTRIM(v.vendor_bill_number))) >= @MinNumberLength
 			AND (@Company IS NULL OR CAST(v.subsidiary_id AS nvarchar(100)) = @Company)		-- BANK ENGINE: same subsidiary as the bank account
@@ -421,7 +425,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 							ELSE null END
 			, @GLCode = @DefaultGLCodevendor_id--ISNULL(OffSetLedgerAccountNumber, @DefaultGLCodevendor_id)
 		from
-			tb_Netsuite_vendorBill v --	[001].dbo._Orbis_Crediteur_Openstaand
+			dbo.vw_Bank_Open_VendorBill v		-- BANK ENGINE: snapshot (was tb_Netsuite_vendorBill)
 		where
 			1=1--CompanyID=@CompanyID
 			AND vendor_id = @vendor_id
@@ -444,7 +448,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 									END)
 				, @GLCode = @DefaultGLCodevendor_id --MAX(ISNULL(OffSetLedgerAccountNumber, @DefaultGLCodevendor_id))
 			FROM
-				tb_Netsuite_vendorBill v --	[001].dbo._Orbis_Crediteur_Openstaand
+				dbo.vw_Bank_Open_VendorBill v		-- BANK ENGINE: snapshot (was tb_Netsuite_vendorBill)
 			WHERE
 				v.vendor_id = @vendor_id
 				AND (@Company IS NULL OR CAST(v.subsidiary_id AS nvarchar(100)) = @Company)		-- BANK ENGINE: same subsidiary as the bank account
@@ -484,9 +488,9 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 				, @GLCode = @DefaultGLCodecustomer_id --ISNULL(OffSetLedgerAccountNumber, @DefaultGLCodecustomer_id)
 				, @Newcustomer=case when @customer_id is null then 1 else 0 end
 				, @customer_id = c.customer_id
-				, @Reference =CASE WHEN @amount = c.amount_open THEN c.invoice_number ELSE null END
+				, @Reference =CASE WHEN ABS(@amount - c.amount_open) < 0.005 THEN c.invoice_number ELSE null END
 			FROM
-				tb_Netsuite_Invoice c
+				dbo.vw_Bank_Open_Invoice c		-- BANK ENGINE: snapshot (was tb_Netsuite_Invoice)
 			WHERE
 				1=1 --and CompanyID=@CompanyID
 				AND	@customer_id is null
@@ -512,13 +516,13 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 			, @GLCode = @DefaultGLCodecustomer_id --ISNULL(OffSetLedgerAccountNumber, @DefaultGLCodecustomer_id)
 			, @Newcustomer=case when @customer_id is null then 1 else 0 end
 			, @customer_id = c.customer_id
-			, @Reference =CASE WHEN @amount = c.amount_open and @currency='EUR' THEN c.invoice_number
-							   WHEN @amount = c.amount_open and @currency=c.currency_name THEN c.invoice_number
+			, @Reference =CASE WHEN ABS(@amount - c.amount_open) < 0.005 and @currency='EUR' THEN c.invoice_number
+							   WHEN ABS(@amount - c.amount_open) < 0.005 and @currency=c.currency_name THEN c.invoice_number
 							   --when @Original_Amount=amount_open and @currency=currency then invoice_number
 
 							ELSE null END
 		FROM
-			tb_Netsuite_Invoice c
+			dbo.vw_Bank_Open_Invoice c		-- BANK ENGINE: snapshot (was tb_Netsuite_Invoice)
 		WHERE
 			1=1 --CompanyID=@CompanyID
 			AND	c.customer_id = @customer_id
@@ -564,14 +568,14 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 				SELECT @typematch='SalesinvoiceAmount'
 						,@reference=max(c.invoice_number)
 				FROM
-						tb_Netsuite_Invoice c
+						dbo.vw_Bank_Open_Invoice c		-- BANK ENGINE: snapshot (was tb_Netsuite_Invoice)
 				WHERE
 						c.customer_id=@customer_id
 						AND (@Company IS NULL OR CAST(c.subsidiary_id AS nvarchar(100)) = @Company)		-- BANK ENGINE: same subsidiary as the bank account
 						AND (
-								(c.amount_open=@amount and @currency='EUR')
+								(ABS(c.amount_open - @amount) < 0.005 and @currency='EUR')
 								OR
-								(c.amount_open=@amount and @currency=c.currency_name)
+								(ABS(c.amount_open - @amount) < 0.005 and @currency=c.currency_name)
 									--OR
 									--(amount_open=@Original_Amount and @currency=currency)
 								)
@@ -595,7 +599,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 						,sum(case when @currency=t.currency_name and @currency<>'EUR' then t.amount_open
 							else t.amount_open end) over (order by isnull(t.due_date,'2099-01-01'),t.invoice_number ) as Amount_openCum
 					FROM
-						tb_Netsuite_Invoice  t
+						dbo.vw_Bank_Open_Invoice  t		-- BANK ENGINE: snapshot (was tb_Netsuite_Invoice)
 					WHERE
 						1=1 --CompanyID=@CompanyID
 						AND	t.customer_id = @customer_id
@@ -609,7 +613,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 					)
 			SELECT TOP 1  @typematch='SalesinvoiceListDescription'
 					 ,@ReferenceXML=(SELECT t.invoice_number FROM s t WHERE t.RowNumber<=s.RowNumber FOR XML PATH(''),ROOT('Invoices'))
-			FROM s WHERE Amount_openCum=@amount;
+			FROM s WHERE ABS(Amount_openCum - @amount) < 0.005;
 
 		END
 
@@ -629,7 +633,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 						,sum(case when @currency=t.currency_name and @currency<>'EUR' then t.amount_open
 							else t.amount_open end) over (order by isnull(t.due_date,'2099-01-01'),t.invoice_number ) as amount_openCum
 					FROM
-						tb_Netsuite_Invoice  t
+						dbo.vw_Bank_Open_Invoice  t		-- BANK ENGINE: snapshot (was tb_Netsuite_Invoice)
 					WHERE
 						1=1 --t.CompanyID=@CompanyID
 						AND	t.customer_id = @customer_id
@@ -638,7 +642,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 
 				SELECT TOP 1  @typematch='SalesinvoiceListSum'
 							 ,@ReferenceXML=(SELECT t.invoice_number FROM s t WHERE t.RowNumber<=s.RowNumber FOR XML PATH(''),ROOT('Invoices'))
-							FROM s WHERE amount_openCum=@amount;
+							FROM s WHERE ABS(amount_openCum - @amount) < 0.005;
 
 
 		END
@@ -848,9 +852,9 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 				, @GLCode = @DefaultGLCodecustomer_id --ISNULL(OffSetLedgerAccountNumber, @DefaultGLCodecustomer_id)
 				, @Newcustomer=case when @customer_id is null then 1 else 0 end
 				, @customer_id = customer_id
-				, @Reference =CASE WHEN @amount = amount_open THEN invoice_number ELSE null END
+				, @Reference =CASE WHEN ABS(@amount - amount_open) < 0.005 THEN invoice_number ELSE null END
 			FROM
-				tb_Netsuite_Invoice c
+				dbo.vw_Bank_Open_Invoice c		-- BANK ENGINE: snapshot (was tb_Netsuite_Invoice)
 			WHERE
 				1=1 --CompanyID=@CompanyID
 				AND	@customer_id is null

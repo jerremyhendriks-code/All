@@ -14,6 +14,8 @@
         - The FROM tables keep every load, so per document we take the latest row (BPA_Syscreated).
         - A document whose latest row is more than @MaxAgeHours older than the latest load of its
           subsidiary is no longer in the NetSuite load (paid or closed) and is left out.
+          Test documents (BPA_Origin 'TEST', from test_insert_bank_scenarios.sql) don't count as a
+          load and are always kept, so inserting one doesn't push the real documents out.
         - Only documents with an open amount > 0. Error rows of the FROM task (no document id) are skipped.
         - Amounts become decimal(19,2), so the bank engine can compare to the cent.
 
@@ -26,6 +28,7 @@
     Usage:
         EXEC dbo.sp_Bank_Synchronise_Company_V2;                        -- all subsidiaries
         EXEC dbo.sp_Bank_Synchronise_Company_V2 @Subsidiary = '89';     -- one subsidiary
+        EXEC dbo.sp_Bank_Synchronise_Company_V2 '89', @Report = 0;      -- no result sets (engine SP)
 */
 USE [BPAStaging]
 GO
@@ -93,7 +96,8 @@ GO
 CREATE OR ALTER PROCEDURE dbo.sp_Bank_Synchronise_Company_V2
 (
     @Subsidiary  nvarchar(100) = NULL,  -- NULL = all subsidiaries
-    @MaxAgeHours int           = 36     -- older than the latest load by more than this = no longer open
+    @MaxAgeHours int           = 36,    -- older than the latest load by more than this = no longer open
+    @Report      bit           = 1      -- 0 = no result sets (when called from the engine SP)
 )
 AS
 BEGIN
@@ -127,7 +131,9 @@ BEGIN
         ,   v.BPA_Syscreated                                           AS Source_Syscreated
         ,   ROW_NUMBER() OVER (PARTITION BY v.vendor_bill_id
                                ORDER BY v.BPA_Syscreated DESC, v.BPA_Sysmodified DESC) AS rn
-        ,   MAX(v.BPA_Syscreated) OVER (PARTITION BY v.subsidiary_id)  AS LastLoad
+        ,   MAX(CASE WHEN v.BPA_Origin = N'TEST' THEN NULL ELSE v.BPA_Syscreated END)
+                OVER (PARTITION BY v.subsidiary_id)                       AS LastLoad     -- test rows aren't a load
+        ,   CASE WHEN v.BPA_Origin = N'TEST' THEN 1 ELSE 0 END           AS IsTest
         FROM dbo.tb_Netsuite_vendorBill v
         WHERE v.vendor_bill_id IS NOT NULL
           AND (@Subsidiary IS NULL OR CAST(v.subsidiary_id AS nvarchar(100)) = @Subsidiary)
@@ -155,7 +161,9 @@ BEGIN
         ,   i.BPA_Syscreated                                           AS Source_Syscreated
         ,   ROW_NUMBER() OVER (PARTITION BY i.invoice_id
                                ORDER BY i.BPA_Syscreated DESC, i.BPA_Sysmodified DESC) AS rn
-        ,   MAX(i.BPA_Syscreated) OVER (PARTITION BY i.subsidiary_id)  AS LastLoad
+        ,   MAX(CASE WHEN i.BPA_Origin = N'TEST' THEN NULL ELSE i.BPA_Syscreated END)
+                OVER (PARTITION BY i.subsidiary_id)                       AS LastLoad     -- test rows aren't a load
+        ,   CASE WHEN i.BPA_Origin = N'TEST' THEN 1 ELSE 0 END           AS IsTest
         FROM dbo.tb_Netsuite_Invoice i
         WHERE NULLIF(LTRIM(RTRIM(i.invoice_id)), N'') IS NOT NULL
           AND (@Subsidiary IS NULL OR CAST(i.subsidiary_id AS nvarchar(100)) = @Subsidiary)
@@ -239,7 +247,7 @@ BEGIN
     FROM #items
     WHERE Subsidiary IS NOT NULL
       AND AmountOpen > 0
-      AND Source_Syscreated >= DATEADD(HOUR, -@MaxAgeHours, LastLoad);
+      AND (IsTest = 1 OR LastLoad IS NULL OR Source_Syscreated >= DATEADD(HOUR, -@MaxAgeHours, LastLoad));
 
     -- Relation IBANs are per entity, not per subsidiary: always the full set
     DELETE FROM dbo.tb_Bank_Synch_RelationIBAN;
@@ -250,16 +258,20 @@ BEGIN
 
     COMMIT TRANSACTION;
 
+    IF @Report = 0 RETURN;
+
     -- ---------- Report ----------
     SELECT
         DocType
     ,   Subsidiary
     ,   COUNT(*)                                                                    AS documents_in_staging
     ,   SUM(CASE WHEN AmountOpen > 0
-                  AND Source_Syscreated >= DATEADD(HOUR, -@MaxAgeHours, LastLoad) THEN 1 ELSE 0 END) AS open_synchronised
+                  AND (IsTest = 1 OR LastLoad IS NULL
+                       OR Source_Syscreated >= DATEADD(HOUR, -@MaxAgeHours, LastLoad)) THEN 1 ELSE 0 END) AS open_synchronised
+    ,   SUM(IsTest)                                                                 AS test_documents
     ,   SUM(CASE WHEN AmountOpen IS NULL THEN 1 ELSE 0 END)                         AS amount_open_unreadable
     ,   SUM(CASE WHEN AmountOpen <= 0 THEN 1 ELSE 0 END)                            AS not_open
-    ,   SUM(CASE WHEN Source_Syscreated < DATEADD(HOUR, -@MaxAgeHours, LastLoad) THEN 1 ELSE 0 END) AS no_longer_in_load
+    ,   SUM(CASE WHEN IsTest = 0 AND Source_Syscreated < DATEADD(HOUR, -@MaxAgeHours, LastLoad) THEN 1 ELSE 0 END) AS no_longer_in_load
     ,   MAX(LastLoad)                                                               AS last_load
     FROM #items
     GROUP BY DocType, Subsidiary
