@@ -227,9 +227,10 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 
 
 
-	IF @vendor_id IS NULL or
-	   @customer_id IS NULL
-	BEGIN
+	-- BANK ENGINE: IF/BEGIN/END commented out: only the (commented) workflow query was left, an empty block is a syntax error
+	--IF @vendor_id IS NULL or
+	--@customer_id IS NULL
+	--BEGIN
 		-- Zoek hier in de workflow regels of er een debiteur of crediteur is gekoppeld
 		-- Dit wordt dan gebruikt voor het zoeken van inkoop- of verkoopfactuur.
 
@@ -266,7 +267,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 		--		vw_Bank_Matching m
 		--	WHERE
 		--		@WorkflowNumber=WorkflowNumber
-	END
+	--END
 
 
 
@@ -294,9 +295,10 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 
 
 	--set @vendor_id=null
-	IF @vendor_id IS NULL or
-	   @customer_id IS NULL
-	BEGIN
+	-- BANK ENGINE: IF/BEGIN/END commented out: only the (commented) workflow query was left, an empty block is a syntax error
+	--IF @vendor_id IS NULL or
+	--@customer_id IS NULL
+	--BEGIN
 		-- Zoek hier in de workflow regels of er een debiteur of crediteur is gekoppeld
 		-- Dit wordt dan gebruikt voor het zoeken van inkoop- of verkoopfactuur.
 
@@ -395,7 +397,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 		--		vw_Bank_Matching m
 		--	WHERE
 		--		@WorkflowNumber=WorkflowNumber
-	END
+	--END
 
 	-- BANK ENGINE: geld eruit en nog geen crediteur via IBAN: zoek de crediteur ahv een inkoopfactuurnummer
 	-- in de omschrijving (alleen als precies 1 crediteur zo'n factuur heeft).
