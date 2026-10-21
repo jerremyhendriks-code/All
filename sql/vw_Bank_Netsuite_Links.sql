@@ -19,7 +19,7 @@ GO
 CREATE OR ALTER VIEW dbo.vw_Bank_Netsuite_Links
 AS
 WITH host AS (
-	SELECT BaseURL = N'https://XXXXXXX-sb1.app.netsuite.com'		-- <== your NetSuite host
+	SELECT BaseURL = N'https://9225047-sb1.app.netsuite.com'		-- <== NetSuite host (sandbox 9225047_SB1; production: 9225047.app.netsuite.com)
 ),
 staged AS (
 	SELECT Staged = N'Vendor payment', Page = N'vendpymt.nl', h.BPA_Orig_Entryid, h.BPA_EntryID, h.BPA_Status,
