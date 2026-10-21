@@ -47,6 +47,11 @@ GO
        NetSuite ID (bank / AP / AR / suspense account, subsidiary, currency), the externalId is
        already staged, or a document already waits in an unsent payment (also one made earlier
        in this run: first transaction wins).
+       The GL account of a workflow rule (typematch MATCH) must be fit for a bank journal: known in
+       NetSuite (latest load of tb_Netsuite_Account), active, not a summary account, not a bank /
+       AP / AR / non-posting / statistical account, and open for the bank account's subsidiary
+       (tb_Netsuite_Account_Subsidiary; includeChildren = 1 counts as open for every subsidiary below it,
+       which the engine can't check: NetSuite still refuses the journal if the subsidiary isn't below it).
 
        Created: the NetSuite record(s) with BPA_Direction 'TO', BPA_Action 'A' (add), BPA_Status 0, and the bank
        transaction BPA_Status = 1, BPA_ReturnedID = BPA_EntryID of the NetSuite header, all in one
@@ -171,6 +176,14 @@ DECLARE
 ,	@ClassID          nvarchar(100)		-- from a workflow rule: cost unit = NetSuite class
 ,	@WorkflowID       uniqueidentifier
 ,	@Scenario         varchar(20)
+	-- the GL account of a workflow rule (latest load of tb_Netsuite_Account)
+,	@RuleAcctFound    bit
+,	@RuleAcctName     nvarchar(255)
+,	@RuleAcctInactive bit
+,	@RuleAcctSummary  bit
+,	@RuleAcctType     nvarchar(255)
+,	@RuleAcctChildren bit
+,	@RuleAcctSubOK    bit
 	-- bank account settings
 ,	@SubsidiaryID     nvarchar(100)
 ,	@BankAccountID    nvarchar(100)
@@ -239,7 +252,9 @@ BEGIN
 		@BillsFound = 0, @VendorBillID = NULL, @BillAmountOpen = NULL, @BillSubsidiaryID = NULL,
 		@BillCurrencyID = NULL, @DocCount = 0, @DocAmountOpen = NULL, @Documents = NULL, @DocumentIDs = NULL,
 		@OffsetAccountID = NULL, @EntityID = NULL, @PayAmount = NULL, @StagedAs = NULL,
-		@NewEntryID = NULL, @Reason = NULL;
+		@NewEntryID = NULL, @Reason = NULL,
+		@RuleAcctFound = 0, @RuleAcctName = NULL, @RuleAcctInactive = NULL, @RuleAcctSummary = NULL,
+		@RuleAcctType = NULL, @RuleAcctChildren = NULL, @RuleAcctSubOK = 0;
 
 	SET @Scenario =
 		CASE
@@ -521,6 +536,28 @@ BEGIN
 						ELSE                            @UnknownDebtor
 					END;
 
+			-- The GL account of a workflow rule: is it fit for this bank journal?
+			IF @RuleGLCode IS NOT NULL
+			BEGIN
+				SELECT TOP (1)
+					@RuleAcctFound    = 1
+				,	@RuleAcctName     = a.acctNumber + ' ' + a.acctName
+				,	@RuleAcctInactive = ISNULL(a.isInactive, 0)
+				,	@RuleAcctSummary  = ISNULL(a.isSummary, 0)
+				,	@RuleAcctType     = COALESCE(a.acctTypeId, a.acctTypeRefName)
+				,	@RuleAcctChildren = ISNULL(a.includeChildren, 0)
+				FROM tb_Netsuite_Account a
+				WHERE a.id = @RuleGLCode
+				ORDER BY a.BPA_Syscreated DESC;
+
+				SET @RuleAcctSubOK =
+					CASE WHEN EXISTS (SELECT 1
+									  FROM tb_Netsuite_Account_Subsidiary s
+									  WHERE s.account_id = @RuleGLCode
+										AND (s.subsidiaryId = @SubsidiaryID OR @RuleAcctChildren = 1))
+						 THEN 1 ELSE 0 END;
+			END
+
 			SET @Reason =
 				CASE
 					WHEN @Amount = 0 OR @Amount IS NULL       THEN 'Amount is 0'
@@ -528,9 +565,20 @@ BEGIN
 					WHEN @SubsidiaryID IS NULL                THEN 'No subsidiary (Company) for bank account ' + ISNULL(@Origin, '')
 					WHEN @BankAccountID IS NULL               THEN 'No GLCodeBank for bank account ' + ISNULL(@Origin, '')
 					WHEN @CurrencyID IS NULL                  THEN 'Unknown currency ' + ISNULL(@Currency, '')
-					WHEN @RuleGLCode IS NOT NULL
-					 AND NOT EXISTS (SELECT 1 FROM tb_Netsuite_Account a WHERE a.id = @RuleGLCode)
+					WHEN @RuleGLCode IS NOT NULL AND @RuleAcctFound = 0
 					                                          THEN 'GL account ' + @RuleGLCode + ' of the workflow rule is not a NetSuite account'
+					WHEN @RuleGLCode IS NOT NULL AND @RuleAcctInactive = 1
+					                                          THEN 'GL account ' + @RuleAcctName + ' of the workflow rule is inactive'
+					WHEN @RuleGLCode IS NOT NULL AND @RuleAcctSummary = 1
+					                                          THEN 'GL account ' + @RuleAcctName + ' of the workflow rule is a summary account'
+					WHEN @RuleGLCode IS NOT NULL
+					 AND (@RuleAcctType IN ('Bank', 'AcctPay', 'AcctRec', 'NonPosting', 'Stat', 'Statistical',
+											'Accounts Payable', 'Accounts Receivable', 'Non Posting')
+						  OR @RuleGLCode IN (@BankAccountID, @APAccountID, @ARAccountID))
+					                                          THEN 'GL account ' + @RuleAcctName + ' of the workflow rule is a ' + ISNULL(@RuleAcctType, 'bank / AP / AR')
+					                                               + ' account, not allowed in a bank rule'
+					WHEN @RuleGLCode IS NOT NULL AND @RuleAcctSubOK = 0
+					                                          THEN 'GL account ' + @RuleAcctName + ' of the workflow rule is not open for subsidiary ' + @SubsidiaryID
 					WHEN @OffsetAccountID IS NULL             THEN
 						CASE
 							WHEN @Creditor IS NOT NULL THEN 'No AP account (DefaultGLCodeCreditor) for bank account ' + @Origin
