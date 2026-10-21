@@ -32,6 +32,8 @@ GO
          MATCH       GL account, relation, VAT code, department (Costcenter) and class (CostUnit) from the most
                      specific fitting rule, when the transaction isn't matched to a document
        GLCode / Costcenter / CostUnit / VatCode are NetSuite ids, nvarchar(100) (were Exact codes, 9-10 chars).
+   11. Counterparty IBAN = own bank account (bank costs, interest): no relation from the IBAN, so such a
+       transaction isn't booked on a vendor / customer that happens to have the own IBAN in its bank details.
 */
 CREATE OR ALTER FUNCTION [dbo].[fn_Bank_Match_V2]
 	(
@@ -219,6 +221,7 @@ DECLARE @KenmerkMatch nvarchar(300) = N' ' + ISNULL(@betalingskenmerk, N'') + N'
 		--b.CompanyID=@CompanyID
 		--and
 		b.custrecord_2663_entity_iban = UPPER(REPLACE(@IBAN, ' ', ''))		-- BANK ENGINE: snapshot IBANs are upper case without spaces
+		AND UPPER(REPLACE(@IBAN, ' ', '')) <> UPPER(REPLACE(ISNULL(@BankAccount, ''), ' ', ''))	-- BANK ENGINE: not the own bank account
 
 	having
 		(
