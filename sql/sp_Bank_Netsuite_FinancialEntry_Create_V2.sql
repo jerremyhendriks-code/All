@@ -66,7 +66,8 @@ GO
         DefaultGLCodeDebtor   = AR account ID        -> aracctId, journal line 1 for a customer
         UnknownCreditor / UnknownDebtor = suspense accounts for journals without a relation
     externalId = 'BANK-<own IBAN>-<bank BPA_Reference>', so NetSuite refuses a second copy.
-    id is NOT NULL without a default: sent as '' and filled once NetSuite has created the record.
+    id is NOT NULL without a default: sent as ''; the TO task writes the NetSuite id back in BPA_ReturnedID
+    (see vw_Bank_Netsuite_Links for a link per record).
 
     Run:
         EXEC sp_Bank_Netsuite_FinancialEntry_Create_V2 '89';
