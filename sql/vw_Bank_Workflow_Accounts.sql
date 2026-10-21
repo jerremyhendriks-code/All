@@ -10,8 +10,11 @@ GO
 -- One row per Rabobank account with its company and NetSuite bank account.
 -- Used by the Bank Workflow Report (dropdowns + sp_Bank_Workflow_Overzicht).
 --
--- Company:          tb_Companies via BPA_Connection (same link as vw_Bank_OpenTransaction).
---                   No link yet -> '(no company)', so the account still shows in the report.
+-- Company:          tb_Companies via the subsidiary in tb_Bank_Bankaccounts.BPA_Company, so a
+--                   subsidiary with more than one bank account (94: NL45... and NL16...) finds
+--                   its company for every account. tb_Companies.BPA_Company_BPAConnection holds only
+--                   one connection per company, so it is only the fallback.
+--                   No link at all -> '(no company)', so the account still shows in the report.
 -- NetSuite account: the NetSuite account name holds the Dutch account number, the last 10 digits
 --                   of the IBAN, with spaces in between:
 --                       NL76RABO0103275460  ->  'Rabobank 0103 2754 60 GGG Euro'
@@ -35,15 +38,19 @@ FROM (
 		UPPER(REPLACE(ba.IBAN, ' ', '')) AS iban
 	,	ba.BankType
 	,	ba.BPA_Connection
+	,	ba.BPA_Company
 	FROM dbo.tb_Bank_Bankaccounts ba
 	WHERE ba.IBAN IS NOT NULL
 ) b
 OUTER APPLY (
 	SELECT TOP (1) c.BPA_Company, c.BPA_Company_Description, c.subsidiary_ID
 	FROM dbo.tb_Companies c
-	WHERE c.BPA_Company_BPAConnection = b.BPA_Connection
-		AND c.subsidiary_ID IS NOT NULL
-	ORDER BY c.BPA_Sysmodified DESC
+	WHERE c.subsidiary_ID IS NOT NULL
+		AND (   CAST(c.subsidiary_ID AS nvarchar(100)) = CAST(b.BPA_Company AS nvarchar(100))
+		     OR c.BPA_Company_BPAConnection = b.BPA_Connection)
+	ORDER BY CASE WHEN CAST(c.subsidiary_ID AS nvarchar(100)) = CAST(b.BPA_Company AS nvarchar(100))
+	              THEN 0 ELSE 1 END
+	,	c.BPA_Sysmodified DESC
 ) co
 OUTER APPLY (
 	SELECT TOP (1) a.id, a.acctNumber, a.acctName
