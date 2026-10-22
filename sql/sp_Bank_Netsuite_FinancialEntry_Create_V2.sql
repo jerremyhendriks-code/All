@@ -121,7 +121,6 @@ WHERE Transactions.BPA_Status = 0
 	AND (@BPA_EntryID IS NULL OR Transactions.BPA_EntryID = @BPA_EntryID);
 
 -- What happened to each transaction; the report at the end
-IF OBJECT_ID('tempdb..#result') IS NOT NULL DROP TABLE #result;
 CREATE TABLE #result
 (
 	BPA_EntryID          uniqueidentifier NOT NULL
@@ -146,7 +145,6 @@ CREATE TABLE #result
 );
 
 -- The invoices of the customer payment being handled (one, or a list from Matched_ReferenceXML)
-IF OBJECT_ID('tempdb..#docs') IS NOT NULL DROP TABLE #docs;
 CREATE TABLE #docs
 (
 	line                 int IDENTITY(0, 1) NOT NULL
@@ -160,7 +158,6 @@ CREATE TABLE #docs
 );
 
 -- Bills / invoices paid in this run, so a second transaction can't pay them again
-IF OBJECT_ID('tempdb..#used_docs') IS NOT NULL DROP TABLE #used_docs;
 CREATE TABLE #used_docs
 (
 	doc_type             varchar(20)      NOT NULL	-- VENDORBILL / INVOICE
