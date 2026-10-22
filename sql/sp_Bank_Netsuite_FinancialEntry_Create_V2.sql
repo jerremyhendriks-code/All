@@ -42,7 +42,12 @@ GO
                                 vendor known   -> AP account, entity = vendor
                                 customer known -> AR account, entity = customer
                                 nothing known  -> suspense account: UnknownCreditor (money out)
-                                                  or UnknownDebtor (money in)
+                                                  or UnknownDebtor (money in), but only after the
+                                                  transaction has waited @SuspenseAfterDays (5) days
+                                                  since it came in (BPA_Syscreated) for a workflow rule.
+                                                  Until then it stays open (Result 'waiting') and shows
+                                                  in the Bank Workflow report, so a user can make a rule
+                                                  that the next run picks up.
 
        Skipped (and reported, the transaction stays open) when something is missing or unsafe:
        a missing NetSuite ID (bank / AP / AR / suspense account, subsidiary, currency) or the externalId
@@ -75,6 +80,7 @@ GO
         EXEC sp_Bank_Netsuite_FinancialEntry_Create_V2 '89', @Preview = 1;      -- only matches (Matched_*), creates nothing
         EXEC sp_Bank_Netsuite_FinancialEntry_Create_V2 '89', @BPA_EntryID = '<one bank transaction>';
         EXEC sp_Bank_Netsuite_FinancialEntry_Create_V2 '89', @Synchronise = 0;  -- keep the current snapshot
+        EXEC sp_Bank_Netsuite_FinancialEntry_Create_V2 '89', @SuspenseAfterDays = 0;  -- suspense right away
 */
 CREATE OR ALTER PROCEDURE [dbo].[sp_Bank_Netsuite_FinancialEntry_Create_V2]
 (
@@ -82,6 +88,7 @@ CREATE OR ALTER PROCEDURE [dbo].[sp_Bank_Netsuite_FinancialEntry_Create_V2]
 ,	@BPA_EntryID uniqueidentifier = NULL	-- NULL = all open transactions of @BPA_Company
 ,	@Preview     bit = 0					-- 1 = match and report, create no NetSuite records
 ,	@Synchronise bit = 1					-- 1 = refresh the open items snapshot of @BPA_Company first
+,	@SuspenseAfterDays int = 5				-- no document, relation or rule: wait this many days for a rule before suspense
 )
 AS
 SET NOCOUNT ON;
@@ -133,7 +140,7 @@ CREATE TABLE #result
 ,	WorkflowID           uniqueidentifier NULL	-- workflow rule used (typematch MATCH)
 ,	ExternalID           nvarchar(255)    NULL
 ,	NetsuiteEntryID      uniqueidentifier NULL
-,	Result               varchar(20)      NOT NULL	-- created / would be created / skipped / error
+,	Result               varchar(20)      NOT NULL	-- created / would be created / waiting / skipped / error
 ,	Reason               nvarchar(2048)   NULL
 ,	Note                 nvarchar(2048)   NULL	-- why a journal entry instead of a payment
 );
@@ -165,6 +172,7 @@ DECLARE
 	@EntryID          uniqueidentifier
 ,	@Origin           nvarchar(100)
 ,	@Bookdate         datetime
+,	@Imported         datetime			-- when the bank transaction came in (start of the wait for a rule)
 ,	@Amount           float
 ,	@Currency         varchar(20)
 ,	@Memo             nvarchar(250)
@@ -213,7 +221,8 @@ DECLARE
 ,	@StagedAs         nvarchar(50)
 ,	@NewEntryID       uniqueidentifier
 ,	@Reason           nvarchar(2048)
-,	@DocReason        nvarchar(2048);	-- the bill / invoice doesn't fit: journal entry instead
+,	@DocReason        nvarchar(2048)	-- the bill / invoice doesn't fit: journal entry instead
+,	@Waiting          bit;				-- 1 = waits for a workflow rule (stays open)
 
 -- 2. One pass per bank transaction.
 --    STATIC: the list and its values are fixed at OPEN; BPA_Status changes inside the loop.
@@ -222,6 +231,7 @@ DECLARE Transaction_Cursor CURSOR LOCAL STATIC READ_ONLY FORWARD_ONLY FOR
 		t.BPA_EntryID
 	,	t.BPA_Origin
 	,	t.Bookdate
+	,	ISNULL(t.BPA_Syscreated, t.Bookdate)
 	,	t.Amount
 	,	t.Currency
 	,	LEFT(COALESCE(t.Description, t.Kenmerk, t.Betalingskenmerk, ''), 250)
@@ -243,7 +253,7 @@ DECLARE Transaction_Cursor CURSOR LOCAL STATIC READ_ONLY FORWARD_ONLY FOR
 
 OPEN Transaction_Cursor;
 FETCH NEXT FROM Transaction_Cursor INTO
-	@EntryID, @Origin, @Bookdate, @Amount, @Currency, @Memo, @ExternalID,
+	@EntryID, @Origin, @Bookdate, @Imported, @Amount, @Currency, @Memo, @ExternalID,
 	@typematch, @Creditor, @Debtor, @Reference, @ReferenceXML,
 	@RuleGLCode, @DepartmentID, @ClassID, @WorkflowID;
 
@@ -256,7 +266,7 @@ BEGIN
 		@BillsFound = 0, @VendorBillID = NULL, @BillAmountOpen = NULL, @BillSubsidiaryID = NULL,
 		@BillCurrencyID = NULL, @DocCount = 0, @DocAmountOpen = NULL, @Documents = NULL, @DocumentIDs = NULL,
 		@OffsetAccountID = NULL, @EntityID = NULL, @PayAmount = NULL, @StagedAs = NULL,
-		@NewEntryID = NULL, @Reason = NULL, @DocReason = NULL,
+		@NewEntryID = NULL, @Reason = NULL, @DocReason = NULL, @Waiting = 0,
 		@RuleAcctFound = 0, @RuleAcctName = NULL, @RuleAcctInactive = NULL, @RuleAcctSummary = NULL,
 		@RuleAcctType = NULL, @RuleAcctChildren = NULL, @RuleAcctSubOK = 0;
 
@@ -614,6 +624,15 @@ BEGIN
 					WHEN @StagedAs IS NOT NULL                THEN 'Already staged as ' + @StagedAs + ' ' + @ExternalID
 				END;
 
+			-- Nothing known (no document, relation or rule): wait for a workflow rule before the suspense account
+			IF @Reason IS NULL
+				AND @RuleGLCode IS NULL AND @Creditor IS NULL AND @Debtor IS NULL
+				AND DATEDIFF(DAY, @Imported, GETDATE()) < @SuspenseAfterDays
+				SELECT @Waiting = 1
+				,	@Reason  = 'No relation and no workflow rule: waits for a rule until '
+							 + CONVERT(varchar(10), DATEADD(DAY, @SuspenseAfterDays, @Imported), 105)
+							 + ', then suspense account ' + ISNULL(@OffsetAccountID, '?');
+
 			IF @Reason IS NULL AND @Preview = 0
 			BEGIN
 				SET @NewEntryID = NEWID();
@@ -679,7 +698,8 @@ BEGIN
 			@EntryID, @Bookdate, @Amount, @Currency, @Memo, @typematch, @Scenario,
 			@EntityID, @Documents, @DocumentIDs, @DocAmountOpen, @PayAmount, @OffsetAccountID, @WorkflowID,
 			@ExternalID, @NewEntryID,
-			CASE WHEN @Reason IS NOT NULL THEN 'skipped'
+			CASE WHEN @Waiting = 1        THEN 'waiting'
+				 WHEN @Reason IS NOT NULL THEN 'skipped'
 				 WHEN @Preview = 1        THEN 'would be created'
 				 ELSE 'created' END,
 			@Reason, @DocReason
@@ -703,7 +723,7 @@ BEGIN
 	END CATCH
 
 	FETCH NEXT FROM Transaction_Cursor INTO
-		@EntryID, @Origin, @Bookdate, @Amount, @Currency, @Memo, @ExternalID,
+		@EntryID, @Origin, @Bookdate, @Imported, @Amount, @Currency, @Memo, @ExternalID,
 		@typematch, @Creditor, @Debtor, @Reference, @ReferenceXML,
 		@RuleGLCode, @DepartmentID, @ClassID, @WorkflowID;
 END
@@ -722,5 +742,5 @@ SELECT
 	RelationID, Documents, DocumentIDs, DocAmountOpen, PayAmount, OffsetAccountID, WorkflowID,
 	ExternalID, NetsuiteEntryID
 FROM #result
-ORDER BY CASE Result WHEN 'error' THEN 0 WHEN 'skipped' THEN 2 ELSE 1 END, Scenario, Bookdate, BPA_EntryID;
+ORDER BY CASE Result WHEN 'error' THEN 0 WHEN 'skipped' THEN 2 WHEN 'waiting' THEN 3 ELSE 1 END, Scenario, Bookdate, BPA_EntryID;
 GO
