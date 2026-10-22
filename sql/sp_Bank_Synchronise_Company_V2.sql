@@ -16,6 +16,11 @@
           subsidiary is no longer in the NetSuite load (paid or closed) and is left out.
           Test documents (BPA_Origin 'TEST', from test_insert_bank_scenarios.sql) don't count as a
           load and are always kept, so inserting one doesn't push the real documents out.
+        - Paid by the bank engine since the load: the vendor / customer payments the engine sent to NetSuite
+          (TO, BPA_Status 1, NetSuite id in BPA_ReturnedID) after the document's latest row was loaded are
+          taken off the open amount (AmountPaidByBank), so a document is never paid twice while the next
+          FROM load is still to come. Once a FROM load after the payment arrives, NetSuite's own open
+          amount already has it and nothing is taken off.
         - Only documents with an open amount > 0. Error rows of the FROM task (no document id) are skipped.
         - Amounts become decimal(19,2), so the bank engine can compare to the cent.
 
@@ -69,6 +74,11 @@ BEGIN
         ON dbo.tb_Bank_Synch_OpenItems (Subsidiary, DocType, EntityID)
         INCLUDE (DocumentNumber, AmountOpen, CurrencyName);
 END
+GO
+
+-- Paid by the bank engine since the FROM load (already taken off AmountOpen); NetSuite's open amount = AmountOpen + this
+IF COL_LENGTH('dbo.tb_Bank_Synch_OpenItems', 'AmountPaidByBank') IS NULL
+    ALTER TABLE dbo.tb_Bank_Synch_OpenItems ADD AmountPaidByBank decimal(19,2) NULL;
 GO
 
 IF OBJECT_ID('dbo.tb_Bank_Synch_RelationIBAN', 'U') IS NULL
@@ -134,6 +144,7 @@ BEGIN
         ,   MAX(CASE WHEN v.BPA_Origin = N'TEST' THEN NULL ELSE v.BPA_Syscreated END)
                 OVER (PARTITION BY v.subsidiary_id)                       AS LastLoad     -- test rows aren't a load
         ,   CASE WHEN v.BPA_Origin = N'TEST' THEN 1 ELSE 0 END           AS IsTest
+        ,   CAST(NULL AS decimal(19,2))                                AS AmountPaidByBank
         FROM dbo.tb_Netsuite_vendorBill v
         WHERE v.vendor_bill_id IS NOT NULL
           AND (@Subsidiary IS NULL OR CAST(v.subsidiary_id AS nvarchar(100)) = @Subsidiary)
@@ -164,6 +175,7 @@ BEGIN
         ,   MAX(CASE WHEN i.BPA_Origin = N'TEST' THEN NULL ELSE i.BPA_Syscreated END)
                 OVER (PARTITION BY i.subsidiary_id)                       AS LastLoad     -- test rows aren't a load
         ,   CASE WHEN i.BPA_Origin = N'TEST' THEN 1 ELSE 0 END           AS IsTest
+        ,   CAST(NULL AS decimal(19,2))                                AS AmountPaidByBank
         FROM dbo.tb_Netsuite_Invoice i
         WHERE NULLIF(LTRIM(RTRIM(i.invoice_id)), N'') IS NOT NULL
           AND (@Subsidiary IS NULL OR CAST(i.subsidiary_id AS nvarchar(100)) = @Subsidiary)
@@ -176,6 +188,38 @@ BEGIN
     SELECT 'INVOICE', i.*
     FROM invoices i
     WHERE i.rn = 1;
+
+    -- ---------- Paid by the bank engine since the load ----------
+    -- Payments in NetSuite (TO, sent, NetSuite id back) made after the document's row was loaded:
+    -- the FROM table doesn't know them yet, so take them off the open amount.
+    UPDATE it
+    SET AmountPaidByBank = p.Paid
+    ,   AmountOpen       = it.AmountOpen - p.Paid
+    FROM #items it
+    CROSS APPLY
+    (
+        SELECT SUM(x.amount) AS Paid
+        FROM
+        (
+            SELECT TRY_CONVERT(decimal(19,2), a.amount) AS amount, h.BPA_Sysmodified AS Sent
+            FROM dbo.tb_Netsuite_VendorPayment_Apply a
+            JOIN dbo.tb_Netsuite_VendorPayment h ON h.BPA_EntryID = a.BPA_ParentID
+            WHERE it.DocType = 'VENDORBILL'
+              AND a.doc_id = it.DocumentID
+              AND h.BPA_Direction = 'TO' AND h.BPA_Status = 1 AND NULLIF(h.BPA_ReturnedID, N'') IS NOT NULL
+
+            UNION ALL
+
+            SELECT TRY_CONVERT(decimal(19,2), a.amount), h.BPA_Sysmodified
+            FROM dbo.tb_Netsuite_CustomerPayment_Apply a
+            JOIN dbo.tb_Netsuite_CustomerPayment h ON h.BPA_EntryID = a.BPA_ParentID
+            WHERE it.DocType = 'INVOICE'
+              AND a.docId = it.DocumentID
+              AND h.BPA_Direction = 'TO' AND h.BPA_Status = 1 AND NULLIF(h.BPA_ReturnedID, N'') IS NOT NULL
+        ) x
+        WHERE ISNULL(x.Sent, GETDATE()) > it.Source_Syscreated    -- sent after this row was loaded
+    ) p
+    WHERE p.Paid IS NOT NULL;
 
     -- ---------- Relation IBANs ----------
     IF OBJECT_ID('tempdb..#ibans') IS NOT NULL DROP TABLE #ibans;
@@ -238,12 +282,12 @@ BEGIN
     (
         Subsidiary, DocType, DocumentID, DocumentNumber, EntityID, EntityName,
         DocumentDate, DueDate, Amount, AmountOpen, CurrencyID, CurrencyName,
-        StatusName, PostingPeriodName, Memo, Source_EntryID, Source_Syscreated
+        StatusName, PostingPeriodName, Memo, Source_EntryID, Source_Syscreated, AmountPaidByBank
     )
     SELECT
         Subsidiary, DocType, DocumentID, DocumentNumber, EntityID, EntityName,
         DocumentDate, DueDate, Amount, AmountOpen, CurrencyID, CurrencyName,
-        StatusName, PostingPeriodName, Memo, Source_EntryID, Source_Syscreated
+        StatusName, PostingPeriodName, Memo, Source_EntryID, Source_Syscreated, AmountPaidByBank
     FROM #items
     WHERE Subsidiary IS NOT NULL
       AND AmountOpen > 0
@@ -271,6 +315,7 @@ BEGIN
     ,   SUM(IsTest)                                                                 AS test_documents
     ,   SUM(CASE WHEN AmountOpen IS NULL THEN 1 ELSE 0 END)                         AS amount_open_unreadable
     ,   SUM(CASE WHEN AmountOpen <= 0 THEN 1 ELSE 0 END)                            AS not_open
+    ,   SUM(CASE WHEN AmountPaidByBank IS NOT NULL THEN 1 ELSE 0 END)               AS paid_by_bank_since_load
     ,   SUM(CASE WHEN IsTest = 0 AND Source_Syscreated < DATEADD(HOUR, -@MaxAgeHours, LastLoad) THEN 1 ELSE 0 END) AS no_longer_in_load
     ,   MAX(LastLoad)                                                               AS last_load
     FROM #items
