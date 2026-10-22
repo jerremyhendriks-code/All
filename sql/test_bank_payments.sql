@@ -80,9 +80,9 @@ IF EXISTS (SELECT 1 FROM dbo.vw_Bank_Relation_IBAN WHERE custrecord_2663_entity_
     THROW 50002, N'@DummyIBAN belongs to a relation; pick another one.', 1;
 
 -- Fresh snapshot: only documents that are open in the latest load
-EXEC dbo.sp_Bank_Synchronise_Company_V2 @Subsidiary = @VendorCompany, @Report = 0;
+EXEC dbo.sp_Bank_Synchronise_Company_V2 @VendorCompany, 'OPEN';
 IF @CustomerCompany <> @VendorCompany
-    EXEC dbo.sp_Bank_Synchronise_Company_V2 @Subsidiary = @CustomerCompany, @Report = 0;
+    EXEC dbo.sp_Bank_Synchronise_Company_V2 @CustomerCompany, 'OPEN';
 
 -- The real bill and invoice: open, EUR, in their subsidiary, not waiting in an unsent payment, not a test copy
 SELECT TOP (1) @VB_BillID = b.vendor_bill_id, @VB_VendorID = b.vendor_id, @VB_VendorName = b.vendor_name, @VB_Open = b.amount_open
@@ -184,9 +184,9 @@ COMMIT TRANSACTION;
 EXEC sp_Bank_Transaction_Rabobank_Copy @VendorIBAN;
 IF @CustomerIBAN <> @VendorIBAN
     EXEC sp_Bank_Transaction_Rabobank_Copy @CustomerIBAN;
-EXEC dbo.sp_Bank_Synchronise_Company_V2 @Subsidiary = @VendorCompany, @Report = 0;
+EXEC dbo.sp_Bank_Synchronise_Company_V2 @VendorCompany, 'OPEN';
 IF @CustomerCompany <> @VendorCompany
-    EXEC dbo.sp_Bank_Synchronise_Company_V2 @Subsidiary = @CustomerCompany, @Report = 0;
+    EXEC dbo.sp_Bank_Synchronise_Company_V2 @CustomerCompany, 'OPEN';
 
 -- ---------- What fn_Bank_Match_V2 makes of them ----------
 SELECT s.Expected,
@@ -251,5 +251,7 @@ DELETE FROM tb_Netsuite_Invoice     WHERE BPA_Origin = N'TEST' AND invoice_numbe
 
 COMMIT TRANSACTION;
 
-EXEC dbo.sp_Bank_Synchronise_Company_V2 @Report = 0;	-- snapshot of all subsidiaries without the test copies
+EXEC dbo.sp_Bank_Synchronise_Company_V2 '89', 'OPEN';	-- snapshots without the test copies
+EXEC dbo.sp_Bank_Synchronise_Company_V2 '93', 'OPEN';
+EXEC dbo.sp_Bank_Synchronise_Company_V2 '94', 'OPEN';
 */

@@ -91,7 +91,7 @@ DECLARE @Creator nvarchar(50) = N'sp_Bank_Netsuite_FinancialEntry_Create_V2';
 
 -- 0. Fresh snapshot of open bills / invoices / relation IBANs (no report from the synch SP)
 IF @Synchronise = 1
-	EXEC dbo.sp_Bank_Synchronise_Company_V2 @Subsidiary = @BPA_Company, @Report = 0;
+	EXEC dbo.sp_Bank_Synchronise_Company_V2 @BPA_Company, 'OPEN';
 
 -- 1. Match the open transactions
 UPDATE Transactions
